@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+bin/
+*.exe
+*.blockmap
+
+# Local secrets / config
+.env
+.env.*
+!.env.example
+
+# Whisper runtime (created in %APPDATA%, but ignore local copies too)
+.venv-whisper/
+.whisper-models/
+eng.traineddata
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

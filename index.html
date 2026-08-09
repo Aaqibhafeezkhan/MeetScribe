@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline';" />
+  <title>MeetScribe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    body { display: inline-block; }
+
+    /* The whole pill is the drag handle; interactive children opt out. */
+    .bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      height: 30px;
+      padding: 0 6px;
+      background: linear-gradient(180deg, rgba(24,24,27,0.95), rgba(12,12,14,0.95));
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 8px;
+      backdrop-filter: blur(20px);
+      color: #e8e8ea;
+      white-space: nowrap;
+      -webkit-app-region: drag;
+    }
+
+    .item {
+      -webkit-app-region: no-drag;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 22px;
+      padding: 0 7px;
+      border: none;
+      border-radius: 5px;
+      background: transparent;
+      color: #b4b4bd;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .item:hover { background: rgba(255,255,255,0.10); color: #fff; }
+    .item.active { color: #fff; }
+
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #6b6b73; flex: 0 0 auto;
+    }
+    .dot.live { background: #ff5f57; animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    .divider { width: 1px; height: 15px; background: rgba(255,255,255,0.10); margin: 0 3px; }
+
+    .elapsed {
+      font-size: 11px; color: #b4b4bd;
+      font-variant-numeric: tabular-nums; padding: 0 3px;
+      min-width: 36px; text-align: center;
+    }
+
+    /* Green = clickable, grey = click-through (Alt+A) */
+    .status {
+      -webkit-app-region: no-drag;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #35c46a; margin-left: 3px; flex: 0 0 auto;
+      cursor: pointer;
+    }
+    .status.passthrough { background: #6b6b73; }
+
+    .warn {
+      -webkit-app-region: no-drag;
+      display: none;
+      max-width: 210px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #ffb3ad;
+      font-size: 10px;
+      padding: 0 6px;
+      cursor: pointer;
+    }
+    .warn.show { display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="bar" id="bar">
+    <button class="item" id="recordBtn" title="Start / stop recording (Ctrl+Shift+R)">
+      <span class="dot" id="dot"></span>
+      <span id="recordLabel">Record</span>
+    </button>
+    <span class="elapsed" id="elapsed">00:00</span>
+
+    <span class="divider"></span>
+
+    <button class="item" id="shotBtn" title="Save a screenshot into the meeting folder (Ctrl+Shift+S)">Shot</button>
+    <button class="item" id="transcriptBtn" title="Show / hide the transcript (Ctrl+Shift+T)">Transcript</button>
+    <button class="item" id="folderBtn" title="Open the meeting folder (Ctrl+Shift+O)">Folder</button>
+
+    <span class="divider"></span>
+
+    <button class="item" id="settingsBtn" title="Settings (Ctrl+,)">Settings</button>
+    <span class="warn" id="warn" title="Click to open Settings"></span>
+    <span class="status" id="status" title="Click-through toggle (Alt+A)"></span>
+  </div>
+
+  <script src="./src/ui/main-window.js"></script>
+</body>
+</html>

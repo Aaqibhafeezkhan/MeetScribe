@@ -1,0 +1,86 @@
+{
+  "name": "meetscribe",
+  "version": "1.0.0",
+  "description": "Meeting transcription overlay — live speaker-labeled transcript, invisible to screen sharing",
+  "main": "main.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "dev": "node scripts/start.js --no-sandbox",
+    "setup:whisper": "node scripts/setup-whisper.js",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "dist": "npm run build",
+    "pack": "electron-builder --dir",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "rebuild": "npm run clean && npm run build",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "author": {
+    "name": "TechyCSR",
+    "email": "info@techycsr.dev",
+    "url": "https://techycsr.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TechyCSR/OpenCluely"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.meetscribe.app",
+    "productName": "MeetScribe",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**/*",
+      "!*.md",
+      "!.git/**/*",
+      "!.env*",
+      "!.venv-whisper/**/*",
+      "!.whisper-models/**/*",
+      "!bin/**/*",
+      "!scripts/__pycache__/**/*",
+      "!**/*.pyc"
+    ],
+    "asarUnpack": [
+      "assests/icons/**/*",
+      "scripts/whisper_worker.py",
+      "scripts/setup-whisper.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "perMachine": false,
+      "include": "scripts/post-install-nsis.nsh",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "MeetScribe-Setup-${version}.${ext}"
+    }
+  }
+}

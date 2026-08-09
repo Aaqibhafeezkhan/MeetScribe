@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' blob:; worker-src blob:; media-src blob: mediastream:;" />
+  <title>Audio</title>
+</head>
+<body>
+  <!--
+    Hidden 1x1 capture host. It has no UI on purpose: it exists so the audio
+    graph keeps running at full speed even when the overlay is hidden, since
+    Chromium throttles hidden renderers' main threads.
+    blob: is allowed in script-src/worker-src because the AudioWorklet module
+    is loaded from a Blob URL (addModule rejects file:// as cross-origin).
+  -->
+  <script src="./src/ui/audio-engine.js"></script>
+</body>
+</html>

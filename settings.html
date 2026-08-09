@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self';" />
+  <title>Settings</title>
+  <style>
+    :root {
+      --bg: rgba(18,18,20,0.97);
+      --border: rgba(255,255,255,0.10);
+      --text: #e8e8ea;
+      --muted: #85858f;
+      --field: rgba(255,255,255,0.06);
+      --accent: #6fb4ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: transparent; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      color: var(--text); font-size: 12px; -webkit-user-select: none; user-select: none; }
+
+    .panel { display: flex; flex-direction: column; height: 100%;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; backdrop-filter: blur(20px); }
+
+    header { display: flex; align-items: center; padding: 9px 12px;
+      border-bottom: 1px solid var(--border); -webkit-app-region: drag; flex: 0 0 auto; }
+    header h1 { font-size: 12px; font-weight: 600; }
+    header .spacer { flex: 1; }
+
+    main { flex: 1 1 auto; overflow-y: auto; padding: 4px 12px 12px; }
+    main::-webkit-scrollbar { width: 8px; }
+    main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 4px; }
+
+    .tabs { display: flex; gap: 2px; padding: 8px 12px 0; flex: 0 0 auto; }
+    .tab { -webkit-app-region: no-drag; background: transparent; border: none;
+      border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer;
+      font-family: inherit; font-size: 11px; padding: 4px 8px; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .field { margin: 10px 0; }
+    .field > label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+    .row { display: flex; gap: 6px; align-items: center; }
+    .row.between { justify-content: space-between; }
+
+    input[type="text"], input[type="number"], select {
+      -webkit-app-region: no-drag;
+      width: 100%; background: var(--field); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-family: inherit;
+      font-size: 11px; padding: 5px 7px; outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    input[type="checkbox"] { -webkit-app-region: no-drag; accent-color: var(--accent); }
+    input[type="range"] { -webkit-app-region: no-drag; width: 100%; accent-color: var(--accent); }
+
+    .check { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
+    .check label { color: var(--text); font-size: 11px; }
+
+    button.action { -webkit-app-region: no-drag; background: var(--field);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+      cursor: pointer; font-family: inherit; font-size: 11px; padding: 5px 10px; white-space: nowrap; }
+    button.action:hover { background: rgba(255,255,255,0.12); }
+    button.action.primary { background: rgba(111,180,255,0.16); border-color: rgba(111,180,255,0.35); }
+    button.action.danger { color: #ffb3ad; }
+
+    .hint { color: var(--muted); font-size: 10px; line-height: 1.5; margin-top: 4px; }
+
+    .meters { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+    .meter { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--muted); }
+    .meter span { width: 34px; }
+    .meter-bar { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.10); overflow: hidden; }
+    .meter-fill { height: 100%; width: 0%; border-radius: 3px; background: var(--accent); transition: width 90ms linear; }
+
+    .status-line { color: var(--muted); font-size: 10px; margin-top: 6px;
+      font-variant-numeric: tabular-nums; }
+
+    .log { display: none; margin-top: 6px; max-height: 120px; overflow-y: auto;
+      background: #0b0b0d; border: 1px solid var(--border); border-radius: 6px;
+      color: #9fd0a0; font-family: Consolas, "Courier New", monospace; font-size: 10px;
+      padding: 6px; white-space: pre-wrap; word-break: break-all;
+      -webkit-user-select: text; user-select: text; }
+    .log.show { display: block; }
+
+    .icons { display: flex; gap: 6px; }
+    .icon-choice { -webkit-app-region: no-drag; border: 1px solid var(--border);
+      border-radius: 7px; background: var(--field); cursor: pointer; padding: 6px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      color: var(--muted); font-size: 9px; }
+    .icon-choice img { width: 22px; height: 22px; }
+    .icon-choice.selected { border-color: var(--accent); color: var(--text); }
+
+    footer { display: flex; gap: 6px; padding: 9px 12px; border-top: 1px solid var(--border); flex: 0 0 auto; }
+    footer .spacer { flex: 1; }
+
+    .saved { color: #6ee7a8; font-size: 10px; opacity: 0; transition: opacity 160ms; align-self: center; }
+    .saved.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <header>
+      <h1>MeetScribe</h1>
+      <div class="spacer"></div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" data-page="recording">Recording</button>
+      <button class="tab" data-page="audio">Audio</button>
+      <button class="tab" data-page="whisper">Transcription</button>
+      <button class="tab" data-page="appearance">Appearance</button>
+    </div>
+
+    <main>
+      <!-- Recording -->
+      <section class="page active" id="page-recording">
+        <div class="field">
+          <label for="transcriptRoot">Save meetings to</label>
+          <div class="row">
+            <input type="text" id="transcriptRoot" readonly />
+            <button class="action" id="browseFolder">Browse</button>
+            <button class="action" id="openFolder">Open</button>
+          </div>
+          <div class="hint">Each meeting gets its own folder containing transcript.txt and any screenshots.</div>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" id="autoStartRecording" />
+          <label for="autoStartRecording">Start recording automatically when the app launches</label>
+        </div>
+
+        <div class="field">
+          <label for="reorderWindowMs">Line-ordering buffer (ms)</label>
+          <input type="number" id="reorderWindowMs" min="0" max="5000" step="100" />
+          <div class="hint">Both audio streams finish at different times. Lines are held this long and written in
+            the order they were spoken. 0 writes instantly but can interleave out of order.</div>
+        </div>
+      </section>
+
+      <!-- Audio -->
+      <section class="page" id="page-audio">
+        <div class="check">
+          <input type="checkbox" id="systemEnabled" />
+          <label for="systemEnabled">Capture system audio (the other participants)</label>
+        </div>
+        <div class="field">
+          <label for="systemSource">System audio source</label>
+          <select id="systemSource">
+            <option value="loopback">Loopback (recommended)</option>
+            <option value="device">Input device (Stereo Mix / virtual cable)</option>
+          </select>
+          <select id="systemDeviceLabel" style="margin-top:6px; display:none;"></select>
+          <div class="hint">Loopback records whatever plays through your <strong>default</strong> Windows playback
+            device. If the meeting plays to a headset that is not the default, the level meter below stays flat.</div>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" id="micEnabled" />
+          <label for="micEnabled">Capture microphone (you)</label>
+        </div>
+        <div class="field">
+          <label for="micDeviceLabel">Microphone</label>
+          <select id="micDeviceLabel"></select>
+        </div>
+
+        <div class="field">
+          <label>Live levels</label>
+          <div class="meters">
+            <div class="meter"><span id="meterLabelThem">Them</span><div class="meter-bar"><div class="meter-fill" id="meterSystem"></div></div></div>
+            <div class="meter"><span id="meterLabelYou">You</span><div class="meter-bar"><div class="meter-fill" id="meterMic"></div></div></div>
+          </div>
+          <div class="hint">Start a recording and watch these. Flat "Them" means the meeting audio is not going to
+            your default playback device.</div>
+        </div>
+
+        <div class="field">
+          <label>Speaker labels</label>
+          <div class="row">
+            <input type="text" id="labelSystem" placeholder="Them" />
+            <input type="text" id="labelMic" placeholder="You" />
+          </div>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" id="echoSuppress" />
+          <label for="echoSuppress">Drop microphone lines that echo the meeting audio</label>
+        </div>
+        <div class="field">
+          <label for="echoSimilarity">Echo match threshold (<span id="echoValue">0.8</span>)</label>
+          <input type="range" id="echoSimilarity" min="0.5" max="1" step="0.05" />
+        </div>
+      </section>
+
+      <!-- Transcription -->
+      <section class="page" id="page-whisper">
+        <div class="field">
+          <label for="whisperModel">Model</label>
+          <select id="whisperModel">
+            <option value="tiny">tiny (fastest, least accurate)</option>
+            <option value="base">base</option>
+            <option value="small">small (recommended)</option>
+            <option value="medium">medium</option>
+            <option value="large-v3-turbo">large-v3-turbo (most accurate, slowest)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="whisperLanguage">Language</label>
+          <select id="whisperLanguage">
+            <option value="auto">Detect automatically</option>
+            <option value="en">English</option>
+            <option value="de">German</option>
+            <option value="fr">French</option>
+            <option value="es">Spanish</option>
+            <option value="it">Italian</option>
+            <option value="nl">Dutch</option>
+            <option value="pt">Portuguese</option>
+            <option value="pl">Polish</option>
+            <option value="tr">Turkish</option>
+            <option value="ru">Russian</option>
+            <option value="ar">Arabic</option>
+          </select>
+          <div class="hint">Picking the actual language is faster and more accurate than auto-detection.</div>
+        </div>
+
+        <div class="field">
+          <div class="row">
+            <div style="flex:1">
+              <label for="whisperDevice">Device</label>
+              <select id="whisperDevice">
+                <option value="auto">Auto</option>
+                <option value="cpu">CPU</option>
+                <option value="cuda">CUDA (NVIDIA)</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <label for="whisperComputeType">Precision</label>
+              <select id="whisperComputeType">
+                <option value="auto">Auto</option>
+                <option value="int8">int8</option>
+                <option value="int8_float16">int8_float16</option>
+                <option value="float16">float16</option>
+                <option value="float32">float32</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="whisperPython">Python (Whisper environment)</label>
+          <div class="row">
+            <input type="text" id="whisperPython" readonly />
+            <button class="action" id="browsePython">Browse</button>
+          </div>
+          <div class="row" style="margin-top:6px;">
+            <button class="action primary" id="installWhisper">Install / Repair Whisper</button>
+            <label class="hint" style="display:flex;align-items:center;gap:5px;">
+              <input type="checkbox" id="installGpu" /> with CUDA
+            </label>
+          </div>
+          <div class="status-line" id="whisperStatus">Checking…</div>
+          <div class="log" id="installLog"></div>
+        </div>
+
+        <div class="field">
+          <label>Advanced</label>
+          <div class="row">
+            <div style="flex:1">
+              <label for="silenceHangoverMs" class="hint">Pause to end a line (ms)</label>
+              <input type="number" id="silenceHangoverMs" min="200" max="3000" step="50" />
+            </div>
+            <div style="flex:1">
+              <label for="maxUtteranceMs" class="hint">Max line length (ms)</label>
+              <input type="number" id="maxUtteranceMs" min="3000" max="30000" step="1000" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:6px;">
+            <div style="flex:1">
+              <label for="vadEnergyFloor" class="hint">Silence threshold</label>
+              <input type="number" id="vadEnergyFloor" min="0.001" max="0.1" step="0.001" />
+            </div>
+            <div style="flex:1">
+              <label for="whisperWorkerCount" class="hint">Worker processes</label>
+              <input type="number" id="whisperWorkerCount" min="1" max="4" step="1" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Appearance -->
+      <section class="page" id="page-appearance">
+        <div class="field">
+          <label>Disguise (name and icon shown to the system)</label>
+          <div class="icons" id="iconGrid">
+            <button class="icon-choice" data-icon="terminal">
+              <img src="assests/icons/terminal.png" alt="" /><span>Terminal</span>
+            </button>
+            <button class="icon-choice" data-icon="activity">
+              <img src="assests/icons/activity.png" alt="" /><span>Activity</span>
+            </button>
+            <button class="icon-choice" data-icon="settings">
+              <img src="assests/icons/settings.png" alt="" /><span>Settings</span>
+            </button>
+          </div>
+          <div class="hint">Changing this takes full effect after a restart.</div>
+        </div>
+
+        <div class="field">
+          <label for="transcriptFontSize">Transcript text size</label>
+          <input type="number" id="transcriptFontSize" min="10" max="22" step="1" />
+        </div>
+
+        <div class="field">
+          <label for="windowGap">Gap between overlay and transcript (px)</label>
+          <input type="number" id="windowGap" min="0" max="80" step="1" />
+        </div>
+
+        <div class="check">
+          <input type="checkbox" id="startClickThrough" />
+          <label for="startClickThrough">Start in click-through mode</label>
+        </div>
+
+        <div class="field">
+          <button class="action" id="restartApp">Restart app</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <button class="action danger" id="quitApp">Quit</button>
+      <div class="spacer"></div>
+      <span class="saved" id="saved">Saved</span>
+      <button class="action" id="closeBtn">Close</button>
+    </footer>
+  </div>
+
+  <script src="./src/ui/settings-window.js"></script>
+</body>
+</html>
