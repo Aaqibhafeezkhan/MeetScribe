@@ -11,6 +11,7 @@
       --text: #e8e8ea;
       --muted: #85858f;
       --field: rgba(255,255,255,0.06);
+      --field-solid: #26262c;
       --accent: #6fb4ff;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,6 +47,14 @@
     .row { display: flex; gap: 6px; align-items: center; }
     .row.between { justify-content: space-between; }
 
+    textarea {
+      -webkit-app-region: no-drag;
+      width: 100%; background: var(--field); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-family: inherit;
+      font-size: 11px; padding: 5px 7px; outline: none; resize: vertical;
+      line-height: 1.5;
+    }
+    textarea:focus { border-color: var(--accent); }
     input[type="text"], input[type="number"], select {
       -webkit-app-region: no-drag;
       width: 100%; background: var(--field); border: 1px solid var(--border);
@@ -53,6 +62,12 @@
       font-size: 11px; padding: 5px 7px; outline: none;
     }
     input:focus, select:focus { border-color: var(--accent); }
+    /* Windows renders the native dropdown popup with its own surface, inheriting only
+       the option colors - without these the light text lands on a white list. */
+    select { background-color: var(--field-solid); }
+    select option, select optgroup {
+      background-color: var(--field-solid); color: var(--text);
+    }
     input[type="checkbox"] { -webkit-app-region: no-drag; accent-color: var(--accent); }
     input[type="range"] { -webkit-app-region: no-drag; width: 100%; accent-color: var(--accent); }
 
@@ -110,6 +125,7 @@
       <button class="tab active" data-page="recording">Recording</button>
       <button class="tab" data-page="audio">Audio</button>
       <button class="tab" data-page="whisper">Transcription</button>
+      <button class="tab" data-page="final">Final pass</button>
       <button class="tab" data-page="appearance">Appearance</button>
     </div>
 
@@ -289,6 +305,98 @@
         </div>
       </section>
 
+
+      <!-- Final pass -->
+      <section class="page" id="page-final">
+        <div class="field">
+          <label for="glossary">Glossary — names, products, file names, jargon</label>
+          <textarea id="glossary" rows="6" placeholder="BAUMAX, Baubudget26, jdBasic, SharePoint, config.ini&#10;Betriebsfallzuordnung, Stammdaten, FUSION&#10;&gt; Ein Meeting über die BAUMAX-Migration."></textarea>
+          <div class="hint">The one thing that reliably fixes proper nouns: these terms are fed to the
+            decoder as hotwords, in the live transcript and in the final pass. A bigger model helps with
+            everything else but cannot guess a word it has never seen. Commas or new lines; a line
+            starting with "#" is a note, one starting with "&gt;" is prose context for the model. Copied into each meeting folder as
+            glossary.txt, where you can edit it and re-run.</div>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" id="archiveAudio" />
+          <label for="archiveAudio">Keep the meeting audio</label>
+        </div>
+        <div class="hint" style="margin:-4px 0 8px 0;">Required for the final pass, for re-running a
+          meeting with a better model later, and for measuring whether a change actually helped.
+          Roughly 115 MB per hour per stream as WAV, half that as FLAC.</div>
+
+        <div class="field">
+          <label for="archiveFormat">Audio kept as</label>
+          <select id="archiveFormat">
+            <option value="flac">FLAC — lossless, about half the size</option>
+            <option value="wav">WAV — no transcode step</option>
+            <option value="none">Delete once the final pass has run</option>
+          </select>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" id="offlinePassEnabled" />
+          <label for="offlinePassEnabled">Re-transcribe the meeting when recording stops</label>
+        </div>
+        <div class="hint" style="margin:-4px 0 8px 0;">Writes transcript.final.md next to the live
+          transcript: both streams decoded in one pass with context across the whole meeting, beam
+          search, the glossary, and uncertain words marked. Runs in the background — nothing waits
+          on it.</div>
+
+        <div class="field">
+          <label for="offlineModel">Model for the final pass</label>
+          <select id="offlineModel">
+            <option value="large-v3-turbo">large-v3-turbo (recommended)</option>
+            <option value="large-v3">large-v3 (slowest, best)</option>
+            <option value="medium">medium</option>
+            <option value="small">small (same as live — no accuracy gain)</option>
+          </select>
+          <div class="hint">A German fine-tune such as primeline/whisper-large-v3-turbo-german can be
+            typed into the box below instead; it downloads on first use.</div>
+        </div>
+
+        <div class="field">
+          <label for="offlineModelCustom">Custom model (overrides the choice above)</label>
+          <input type="text" id="offlineModelCustom" placeholder="primeline/whisper-large-v3-turbo-german" />
+        </div>
+
+        <div class="field">
+          <div class="row">
+            <div style="flex:1">
+              <label for="offlineBeamSize" class="hint">Beam size</label>
+              <input type="number" id="offlineBeamSize" min="1" max="10" step="1" />
+            </div>
+            <div style="flex:1">
+              <label for="offlineCpuThreads" class="hint">CPU threads (0 = auto)</label>
+              <input type="number" id="offlineCpuThreads" min="0" max="64" step="1" />
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="offlineWordConfidence">Mark words below confidence (<span id="confValue">0.50</span>)</label>
+          <input type="range" id="offlineWordConfidence" min="0" max="0.9" step="0.05" />
+          <div class="hint">Marked ~like this~ in transcript.final.md and listed in an index at the end,
+            so whoever corrects it knows where to look instead of suspecting everything equally.</div>
+        </div>
+
+        <div class="field">
+          <label for="offlineDiffModel">Cross-check against a second model (optional)</label>
+          <input type="text" id="offlineDiffModel" placeholder="empty = off" />
+          <div class="hint">Doubles the runtime and marks every span where the two models read the audio
+            differently as &lt;a|b&gt;. Two independently-trained models agreeing is a good proxy for
+            correct; disagreement finds errors without either model knowing it was wrong.</div>
+        </div>
+
+        <div class="field">
+          <label>Re-run on an earlier meeting</label>
+          <button class="action" id="rerunFinal">Pick a meeting folder…</button>
+          <div class="status-line" id="finalPassStatus">Idle</div>
+          <div class="hint">Edit that meeting's glossary.txt first, then re-run to re-transcribe its
+            archived audio with the vocabulary it needed.</div>
+        </div>
+      </section>
       <!-- Appearance -->
       <section class="page" id="page-appearance">
         <div class="field">

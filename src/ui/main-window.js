@@ -15,6 +15,9 @@ class MainWindowUI {
     this.elapsed = document.getElementById('elapsed');
     this.status = document.getElementById('status');
     this.warn = document.getElementById('warn');
+    this.final = document.getElementById('final');
+    this.finalText = document.getElementById('finalText');
+    this.finalHideTimer = null;
 
     this.recording = false;
     this.startedAt = null;
@@ -36,6 +39,7 @@ class MainWindowUI {
     document.getElementById('settingsBtn').addEventListener('click', () => window.electronAPI.showSettings());
     this.status.addEventListener('click', () => window.electronAPI.toggleInteraction());
     this.warn.addEventListener('click', () => window.electronAPI.showSettings());
+    this.final.addEventListener('click', () => window.electronAPI.openMeetingFolder());
   }
 
   bindEvents() {
@@ -56,6 +60,10 @@ class MainWindowUI {
     });
 
     window.electronAPI.onTranscriptionError(({ message }) => this.setWarning(message));
+
+    // The final pass keeps working for minutes after the meeting stops. Without
+    // this the app looks idle while it is producing the transcript that matters.
+    window.electronAPI.onFinalPass((payload) => this.setFinalPass(payload));
 
     window.electronAPI.onTranscriptionStatus((status) => {
       if (status && status.available === false) {
@@ -113,6 +121,35 @@ class MainWindowUI {
     this.elapsed.textContent = hours > 0
       ? `${hours}:${pad(Math.floor(rest / 60))}:${pad(rest % 60)}`
       : `${pad(Math.floor(rest / 60))}:${pad(rest % 60)}`;
+  }
+
+  setFinalPass(payload) {
+    if (!payload) return;
+    clearTimeout(this.finalHideTimer);
+
+    const done = payload.state === 'done';
+    const failed = payload.state === 'failed';
+    this.final.classList.toggle('ok', done);
+    this.final.classList.toggle('err', failed);
+    this.final.classList.add('show');
+
+    if (done) {
+      this.finalText.textContent = 'Transcript ready';
+    } else if (failed) {
+      this.finalText.textContent = 'Final pass failed';
+    } else {
+      const pct = Math.round((payload.pct || 0) * 100);
+      this.finalText.textContent = `Final pass ${pct}%`;
+    }
+    this.resizeToContent();
+
+    // Terminal states are news, not status: say them, then get out of the way.
+    if (done || failed) {
+      this.finalHideTimer = setTimeout(() => {
+        this.final.classList.remove('show');
+        this.resizeToContent();
+      }, done ? 20000 : 40000);
+    }
   }
 
   setWarning(message) {

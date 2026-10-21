@@ -32,6 +32,16 @@ const FIELDS = {
   maxUtteranceMs: 'number',
   vadEnergyFloor: 'number',
 
+  glossary: 'text',
+  archiveAudio: 'check',
+  archiveFormat: 'text',
+  offlinePassEnabled: 'check',
+  offlineModel: 'text',
+  offlineBeamSize: 'number',
+  offlineCpuThreads: 'number',
+  offlineWordConfidence: 'number',
+  offlineDiffModel: 'text',
+
   transcriptFontSize: 'number',
   windowGap: 'number',
   startClickThrough: 'check'
@@ -70,6 +80,7 @@ class SettingsWindow {
         this.save({ [id]: this.readField(id) });
         if (id === 'systemSource') this.updateSystemSourceVisibility();
         if (id === 'echoSimilarity') this.updateEchoLabel();
+        if (id === 'offlineWordConfidence') this.updateConfidenceLabel();
       });
     }
   }
@@ -97,6 +108,28 @@ class SettingsWindow {
     });
 
     document.getElementById('installWhisper').addEventListener('click', () => this.installWhisper());
+
+    const customModel = document.getElementById('offlineModelCustom');
+    customModel.addEventListener('input', () => {
+      if (this.applying) return;
+      const typed = customModel.value.trim();
+      this.save({ offlineModel: typed || document.getElementById('offlineModel').value });
+    });
+
+    document.getElementById('rerunFinal').addEventListener('click', async () => {
+      const status = document.getElementById('finalPassStatus');
+      const result = await window.electronAPI.pickAndRerunFinalPass();
+      if (result.canceled) return;
+      status.textContent = result.ok
+        ? 'Re-transcribing ' + result.folder + '…'
+        : 'Could not start: ' + result.error;
+    });
+
+    window.electronAPI.onFinalPass((payload) => {
+      const status = document.getElementById('finalPassStatus');
+      if (!status || !payload) return;
+      status.textContent = payload.message || payload.state || '';
+    });
 
     document.getElementById('restartApp').addEventListener('click', () => {
       window.electronAPI.restartAppForStealth();
@@ -166,10 +199,34 @@ class SettingsWindow {
 
     this.updateSystemSourceVisibility();
     this.updateEchoLabel();
+    this.updateConfidenceLabel();
+    this.applyCustomModel(settings);
     this.renderWhisperStatus(settings.whisper);
     this.populateDevices(settings.audioInputs || []);
 
     this.applying = false;
+  }
+
+  updateConfidenceLabel() {
+    const element = document.getElementById('confValue');
+    if (element) {
+      element.textContent = Number(document.getElementById('offlineWordConfidence').value).toFixed(2);
+    }
+  }
+
+  /**
+   * The dropdown holds the stock models; anything else (a German fine-tune, a
+   * local conversion) is typed into the text box. One setting backs both, so
+   * the box wins whenever it holds a value the dropdown does not offer.
+   */
+  applyCustomModel(settings) {
+    const select = document.getElementById('offlineModel');
+    const custom = document.getElementById('offlineModelCustom');
+    if (!select || !custom) return;
+    const value = settings.offlineModel || '';
+    const known = Array.from(select.options).some((option) => option.value === value);
+    custom.value = known ? '' : value;
+    if (!known && value) select.value = 'large-v3-turbo';
   }
 
   updateSystemSourceVisibility() {
