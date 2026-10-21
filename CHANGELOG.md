@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-21
+
 ### Added
 - Offline final pass: post-meeting re-transcription with `large-v3-turbo`, confidence marking, chapters and uncertainty index.
 - Per-stream raw audio archive with FLAC transcoding.
