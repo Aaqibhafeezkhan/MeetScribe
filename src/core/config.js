@@ -133,7 +133,9 @@ class ConfigManager {
         transcriptFontSize: 13,
         overlayOpacity: 1,
         startClickThrough: false,
-        autoStartRecording: false
+        autoStartRecording: false,
+        // Checks GitHub Releases for a newer installed build (packaged app only).
+        autoUpdate: true
       },
 
       stealth: {

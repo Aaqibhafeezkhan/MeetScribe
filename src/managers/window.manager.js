@@ -273,6 +273,7 @@ class WindowManager {
       },
       show: false, // Never show during creation, use showOnCurrentDesktop instead
       title: windowConfig.title,
+      icon: path.join(__dirname, '..', '..', 'assets', 'brand', 'icon-256.png'),
       skipTaskbar: true,
       alwaysOnTop: true,
       visibleOnAllWorkspaces: true,

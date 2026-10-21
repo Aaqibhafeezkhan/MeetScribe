@@ -11,6 +11,7 @@ const FIELDS = {
   transcriptRoot: 'text',
   reorderWindowMs: 'number',
   autoStartRecording: 'check',
+  autoUpdate: 'check',
 
   systemEnabled: 'check',
   micEnabled: 'check',

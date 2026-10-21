@@ -166,6 +166,7 @@ class ApplicationController {
       }
 
       logger.info("Application initialized successfully");
+      this.checkForUpdates();
     } catch (error) {
       this.starting = false;
       logger.error("Application initialization failed", { error: error.message });
@@ -997,6 +998,28 @@ class ApplicationController {
     } catch (error) {
       logger.error("Error during quit", { error: error.message });
       process.exit(1);
+    }
+  }
+
+  // ── Auto-update (installed builds only; GitHub Releases) ──
+
+  checkForUpdates() {
+    if (!app.isPackaged || process.platform !== "win32") return;
+    if (!settingsStore.get("autoUpdate")) {
+      logger.info("Auto-update disabled in settings");
+      return;
+    }
+    try {
+      const { autoUpdater } = require("electron-updater");
+      autoUpdater.logger = null;
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.on("update-available", (info) => logger.info("Update available", { version: info.version }));
+      autoUpdater.on("update-downloaded", (info) => logger.info("Update downloaded, installs on quit", { version: info.version }));
+      autoUpdater.on("error", (error) => logger.warn("Auto-update failed", { error: error.message }));
+      autoUpdater.checkForUpdates().catch((error) => logger.warn("Update check failed", { error: error.message }));
+    } catch (error) {
+      logger.warn("Auto-update unavailable", { error: error.message });
     }
   }
 

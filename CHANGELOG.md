@@ -9,6 +9,9 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Per-stream raw audio archive with FLAC transcoding.
 - Corrections map: `corrections.json` (user data folder, plus a per-meeting copy) replaces known mishearings in the final transcript, marked as `{correct}`.
 - Repo foundation: contributor docs, issue/PR templates, CI, shared Claude Code workflow.
+- `npm run deploy`: builds the installer and installs it silently over the per-user install, keeping one `MeetScribe.lnk` Start Menu shortcut.
+- Auto-update from GitHub Releases for installed builds (Settings toggle, on by default). Release workflow now publishes `latest.yml` and blockmaps.
+- New app icon (signal dot) for the executable, installer and windows (#18).
 
 ### Changed
 - License metadata unified to Apache-2.0; repository links point to this repo.
