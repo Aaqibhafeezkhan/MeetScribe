@@ -19,7 +19,7 @@ class ConfigManager {
     this.config = {
       app: {
         name: 'MeetScribe',
-        version: '1.1.1',
+        version: '1.2.0',
         processTitle: 'MeetScribe',
         dataDir: this.appDataDir,
         isDevelopment: this.env === 'development',
