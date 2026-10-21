@@ -44,7 +44,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: meetscribe-windows
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
           if-no-files-found: error
 
   release:
@@ -63,7 +66,7 @@ jobs:
         shell: bash
         run: |
           mkdir release
-          find artifacts -type f -name '*.exe' -exec cp -v {} release/ \;
+          find artifacts -type f \( -name '*.exe' -o -name '*.blockmap' -o -name 'latest.yml' \) -exec cp -v {} release/ \;
           cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2

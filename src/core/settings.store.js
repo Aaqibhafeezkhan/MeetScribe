@@ -71,7 +71,8 @@ class SettingsStore {
       transcriptFontSize: config.get('ui.transcriptFontSize'),
       overlayOpacity: config.get('ui.overlayOpacity'),
       startClickThrough: config.get('ui.startClickThrough'),
-      autoStartRecording: config.get('ui.autoStartRecording')
+      autoStartRecording: config.get('ui.autoStartRecording'),
+      autoUpdate: config.get('ui.autoUpdate')
     };
   }
 
