@@ -7,5 +7,5 @@ Instructions for AI coding agents (Codex, Cursor, Copilot, Gemini, etc.). Claude
 - Style: match surrounding code, LF endings, log with `createServiceLogger`.
 - Python workers speak JSON lines on stdout: never print anything else.
 - Version is in `package.json` and `src/core/config.js`.
-- **Privacy:** never read or commit transcripts, audio, personal emails, local paths or secrets.
+- **Privacy:** never read or commit transcripts, audio, personal emails, local paths or secrets. Never put the owner's employer, clients, other projects or real meeting content in anything public; use invented stand-ins.
 - Branch from `main` (`feat/`, `fix/`, `docs/`), Conventional Commits, PR template, link the issue.
