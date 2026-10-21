@@ -1,6 +1,6 @@
 {
   "name": "meetscribe",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Meeting transcription overlay — live speaker-labeled transcript, invisible to screen sharing",
   "main": "main.js",
   "scripts": {
@@ -54,6 +54,8 @@
     "asarUnpack": [
       "assests/icons/**/*",
       "scripts/whisper_worker.py",
+      "scripts/whisper_offline.py",
+      "scripts/transcode_flac.py",
       "scripts/setup-whisper.js"
     ],
     "win": {
