@@ -69,7 +69,7 @@ jobs:
           find artifacts -type f \( -name '*.exe' -o -name '*.blockmap' -o -name 'latest.yml' \) -exec cp -v {} release/ \;
           cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: MeetScribe ${{ github.ref_name }}
