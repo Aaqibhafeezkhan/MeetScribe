@@ -95,9 +95,14 @@ npm install
 npm start            # or: npm run dev  (adds --no-sandbox)
 npm run check        # syntax check JS + Python, run before every PR
 npm run build:win    # artifacts in dist/
+npm run deploy       # build + silently install over your local install (Windows)
 ```
 
 Then follow install step 3 to set up Whisper (or run `npm run setup:whisper`).
+
+### Installing your own build and updating
+
+`npm run deploy` builds the NSIS installer and installs it per-user to `%LOCALAPPDATA%\Programs\MeetScribe`, keeping a single Start Menu shortcut (`MeetScribe.lnk`). Run it again after any change; settings and the Whisper setup in `%APPDATA%\MeetScribe` are kept. Installed builds also check GitHub Releases for a newer version on launch; turn this off in Settings; the check contacts GitHub.
 
 ### Project layout
 
