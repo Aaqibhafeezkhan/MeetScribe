@@ -41,6 +41,7 @@ There is no test suite or linter yet (tracked issues). `npm run check` is the ga
 - Never read, print, commit or paste meeting transcripts, audio (`.wav`/`.flac`), `timeline.jsonl`, or `~/Documents/MeetingTranscripts`. Hooks block this; do not work around them.
 - Never commit personal emails, local absolute paths, or secrets. Use the GitHub noreply email for commits. Never use work addresses.
 - Screenshots/examples must use fake content.
+- **Nothing from the owner's work or private life may appear anywhere public** (issues, PRs, commits, comments, docs, code, tests, fixtures): no employer or client names, no names of their other or internal projects, products, tools or colleagues, no real glossary terms, and no details from real meetings. When the user pastes such context, use it only to understand the task, then rewrite it with invented stand-ins (e.g. "Acme", "AcmeTrakr") before anything is posted or committed. If unsure whether something is private, treat it as private. Do not list the forbidden names in the repo either; this rule must stay generic.
 
 ## Git workflow
 
