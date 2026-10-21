@@ -13,18 +13,35 @@
     "pack": "electron-builder --dir",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "rebuild": "npm run clean && npm run build",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "check": "node scripts/check.js"
   },
   "author": {
-    "name": "TechyCSR",
-    "email": "info@techycsr.dev",
-    "url": "https://techycsr.dev"
+    "name": "AmineChr54",
+    "url": "https://github.com/AmineChr54"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/TechyCSR/OpenCluely"
+    "url": "git+https://github.com/AmineChr54/MeetScribe.git"
   },
-  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AmineChr54/MeetScribe/issues"
+  },
+  "homepage": "https://github.com/AmineChr54/MeetScribe#readme",
+  "license": "Apache-2.0",
+  "keywords": [
+    "electron",
+    "whisper",
+    "faster-whisper",
+    "transcription",
+    "meeting-notes",
+    "privacy",
+    "overlay",
+    "windows"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^4.7.1"
