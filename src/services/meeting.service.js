@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const EventEmitter = require('events');
 const settingsStore = require('../core/settings.store');
+const corrections = require('./corrections');
 const logger = require('../core/logger').createServiceLogger('MEETING');
 
 const pad = (value) => String(value).padStart(2, '0');
@@ -92,6 +93,7 @@ class MeetingService extends EventEmitter {
     this.events = [];
 
     this._snapshotGlossary();
+    this._snapshotCorrections();
 
     const labelSystem = settingsStore.get('labelSystem');
     const labelMic = settingsStore.get('labelMic');
@@ -203,7 +205,7 @@ class MeetingService extends EventEmitter {
       '# One term per line, or several separated by commas.',
       '# Lines starting with "#" are notes and are ignored.',
       '# A line starting with ">" is prose context handed to the model, e.g.',
-      '#   > Ein Meeting ueber die BAUMAX-Migration.',
+      '#   > Ein Meeting ueber die Acme-Migration.',
       '# Edit this file and re-run the final pass to re-transcribe with it.',
       ''
     ].join('\r\n');
@@ -211,6 +213,23 @@ class MeetingService extends EventEmitter {
       fs.writeFileSync(path.join(this.folder, 'glossary.txt'), header + glossary + '\r\n', 'utf8');
     } catch (error) {
       logger.warn('Could not write glossary.txt', { error: error.message });
+    }
+  }
+
+  /**
+   * Copy the global corrections file next to the glossary, for the same
+   * reasons: a later re-run uses what was known then, and the file can be
+   * edited by hand first. Without a global file an empty one is written so the
+   * format is discoverable.
+   */
+  _snapshotCorrections() {
+    const target = path.join(this.folder, corrections.FILE_NAME);
+    try {
+      const source = settingsStore.userDataFile(corrections.FILE_NAME);
+      if (fs.existsSync(source)) fs.copyFileSync(source, target);
+      else fs.writeFileSync(target, '{\r\n}\r\n', 'utf8');
+    } catch (error) {
+      logger.warn('Could not write corrections.json', { error: error.message });
     }
   }
 

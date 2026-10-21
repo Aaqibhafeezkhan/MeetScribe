@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 
 const settingsStore = require('../core/settings.store');
 const audioArchive = require('./audio-archive.service');
+const corrections = require('./corrections');
 const logger = require('../core/logger').createServiceLogger('FINAL-PASS');
 
 // Nothing on stdout for this long means the child is wedged, not slow: it
@@ -97,13 +98,16 @@ class OfflinePassService extends EventEmitter {
     this.currentFolder = folder;
     const settings = settingsStore.all();
     const glossary = this._loadGlossary(folder, settings);
+    const matcher = corrections.buildMatcher(
+      corrections.loadRules(folder, settingsStore.userDataFile(corrections.FILE_NAME))
+    );
 
     try {
       this._progress('starting', 0, 'Loading the transcription model…');
       const result = await this._spawnPass({ folder, meta, paths, settings, glossary });
       this._progress('merging', 0.97, 'Merging speakers and writing the transcript…');
 
-      const written = this._render({ folder, meta, result, events, settings, glossary });
+      const written = this._render({ folder, meta, result, events, settings, glossary, matcher });
       this._progress('done', 1, 'Final transcript ready');
       this.emit('done', { folder, ...written });
       logger.info('Final pass complete', { folder, markdown: written.markdownPath });
@@ -306,7 +310,7 @@ class OfflinePassService extends EventEmitter {
 
   // ── Merge and render ──
 
-  _render({ folder, meta, result, events, settings, glossary }) {
+  _render({ folder, meta, result, events, settings, glossary, matcher }) {
     const threshold = Number(settings.offlineWordConfidence) || 0.5;
     const diffByStream = new Map();
     for (const stream of result.diffStreams || []) diffByStream.set(stream.stream, stream);
@@ -350,12 +354,19 @@ class OfflinePassService extends EventEmitter {
 
     // 4. Render each line, collecting the uncertain spans as we go.
     const uncertain = [];
+    const fixCounts = new Map();
     for (const entry of entries) {
       if (entry.kind !== 'speech') continue;
-      entry.rendered = this._renderSpeech(entry, threshold, uncertain);
+      // Known mistakes are fixed last, on the rendered text, so the confidence
+      // and disagreement markup is already in place and the fix is marked on top.
+      const fixed = corrections.applyCorrections(this._renderSpeech(entry, threshold, uncertain), matcher, fixCounts);
+      entry.rendered = fixed.text;
     }
+    const appliedFixes = Array.from(fixCounts, ([heard, count]) => ({ heard, correct: matcher.byKey.get(heard), count }));
 
-    const markdown = this._buildMarkdown({ meta, result, entries, settings, glossary, uncertain, threshold });
+    const markdown = this._buildMarkdown({
+      meta, result, entries, settings, glossary, uncertain, threshold, appliedFixes, hasCorrections: Boolean(matcher)
+    });
     const markdownPath = path.join(folder, 'transcript.final.md');
     fs.writeFileSync(markdownPath, markdown, 'utf8');
 
@@ -388,6 +399,7 @@ class OfflinePassService extends EventEmitter {
         avgLogprob: entry.avgLogprob,
         words: entry.words
       })),
+      corrections: appliedFixes,
       uncertain
     }, null, 2), 'utf8');
 
@@ -459,7 +471,7 @@ class OfflinePassService extends EventEmitter {
 
     // Whisper emits each word with its own leading space, or without one where
     // it belongs to the previous token. That distinction is the difference
-    // between "Baubudget-Datei" and "Baubudget -Datei", so it has to survive
+    // between "Acme-Datei" and "Acme -Datei", so it has to survive
     // the round trip through the markup.
     const primary = words
       .map((word) => ({ ...word, clean: word.word.trim(), space: /^\s/.test(word.word) }))
@@ -567,7 +579,7 @@ class OfflinePassService extends EventEmitter {
     return pieces;
   }
 
-  _buildMarkdown({ meta, result, entries, settings, glossary, uncertain, threshold }) {
+  _buildMarkdown({ meta, result, entries, settings, glossary, uncertain, threshold, appliedFixes, hasCorrections }) {
     const started = new Date(meta.startedAt);
     const stopped = new Date(meta.stoppedAt || meta.startedAt);
     const out = [];
@@ -584,7 +596,12 @@ class OfflinePassService extends EventEmitter {
     if (glossary.terms.length > 0) out.push('- **Glossary:** ' + glossary.terms.join(', '));
     if (glossary.contextPrompt) out.push('- **Context given to the model:** ' + glossary.contextPrompt);
     out.push('- **Markup:** `~wort~` = the model was unsure (p < ' + threshold + ')' +
-      (result.diffModel ? ' · `<a|b>` = the two models disagreed' : ''));
+      (result.diffModel ? ' · `<a|b>` = the two models disagreed' : '') +
+      (hasCorrections ? ' · `{wort}` = replaced from the corrections list' : ''));
+    if (appliedFixes.length > 0) {
+      out.push('- **Corrections applied:** ' +
+        appliedFixes.map((fix) => fix.heard + ' → ' + fix.correct + ' (' + fix.count + '×)').join(', '));
+    }
     out.push('');
     out.push('> Produced by the final pass over the archived audio, with context across the whole');
     out.push('> meeting and a glossary. The live `transcript.txt` in this folder is the low-latency');
