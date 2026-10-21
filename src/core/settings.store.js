@@ -86,6 +86,11 @@ class SettingsStore {
     return this.filePath;
   }
 
+  /** A file that lives next to settings.json in the user data folder. */
+  userDataFile(name) {
+    return path.join(path.dirname(this._resolvePath()), name);
+  }
+
   load() {
     const file = this._resolvePath();
     const defaults = this.defaults();

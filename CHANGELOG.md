@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format based on [Keep a
 ### Added
 - Offline final pass: post-meeting re-transcription with `large-v3-turbo`, confidence marking, chapters and uncertainty index.
 - Per-stream raw audio archive with FLAC transcoding.
+- Corrections map: `corrections.json` (user data folder, plus a per-meeting copy) replaces known mishearings in the final transcript, marked as `{correct}`.
 - Repo foundation: contributor docs, issue/PR templates, CI, shared Claude Code workflow.
 
 ### Changed
