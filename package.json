@@ -14,7 +14,9 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "rebuild": "npm run clean && npm run build",
     "postinstall": "electron-builder install-app-deps",
-    "check": "node scripts/check.js"
+    "check": "node scripts/check.js",
+    "build:installer": "electron-builder --win nsis --publish never",
+    "deploy": "node scripts/deploy-local.js"
   },
   "author": {
     "name": "AmineChr54",
@@ -43,6 +45,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^4.7.1"
   },
@@ -69,6 +72,7 @@
       "!**/*.pyc"
     ],
     "asarUnpack": [
+      "assets/brand/**/*",
       "assests/icons/**/*",
       "scripts/whisper_worker.py",
       "scripts/whisper_offline.py",
@@ -89,7 +93,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "assets/brand/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -99,7 +104,16 @@
       "perMachine": false,
       "include": "scripts/post-install-nsis.nsh",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "MeetScribe-Setup-${version}.${ext}"
+      "artifactName": "MeetScribe-Setup-${version}.${ext}",
+      "installerIcon": "assets/brand/icon.ico",
+      "uninstallerIcon": "assets/brand/icon.ico",
+      "installerHeaderIcon": "assets/brand/icon.ico",
+      "shortcutName": "MeetScribe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "AmineChr54",
+      "repo": "MeetScribe"
     }
   }
 }
