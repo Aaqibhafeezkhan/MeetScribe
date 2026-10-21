@@ -37,6 +37,18 @@ class SettingsStore {
       echoSuppress: config.get('audio.echoSuppress'),
       echoSimilarity: config.get('audio.echoSimilarity'),
 
+      glossary: config.get('whisper.glossary'),
+
+      archiveAudio: config.get('offline.archiveAudio'),
+      archiveFormat: config.get('offline.archiveFormat'),
+      offlinePassEnabled: config.get('offline.passEnabled'),
+      offlineModel: config.get('offline.model'),
+      offlineDiffModel: config.get('offline.diffModel'),
+      offlineBeamSize: config.get('offline.beamSize'),
+      offlineComputeType: config.get('offline.computeType'),
+      offlineCpuThreads: config.get('offline.cpuThreads'),
+      offlineWordConfidence: config.get('offline.wordConfidence'),
+
       whisperPython: config.get('whisper.pythonPath'),
       whisperModel: config.get('whisper.model'),
       whisperLanguage: config.get('whisper.language'),

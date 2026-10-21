@@ -19,7 +19,7 @@ class ConfigManager {
     this.config = {
       app: {
         name: 'MeetScribe',
-        version: '1.0.0',
+        version: '1.1.1',
         processTitle: 'MeetScribe',
         dataDir: this.appDataDir,
         isDevelopment: this.env === 'development',
@@ -62,9 +62,44 @@ class ConfigManager {
         echoSimilarity: 0.8
       },
 
+      // ── The final pass ──
+      // Runs once after the meeting, over the archived audio, and produces the
+      // transcript worth keeping. It is free to be slow: nothing is waiting on
+      // it, so it gets the big model, beam search, and full-meeting context —
+      // all the things the live overlay cannot afford.
+      offline: {
+        // Keep the raw capture audio. Without it the final pass has nothing to
+        // run on, a meeting can never be re-transcribed with a better model,
+        // and no accuracy change can be measured against a real recording.
+        archiveAudio: true,
+        // 'flac' halves the archive losslessly (PyAV is already installed with
+        // faster-whisper). 'wav' skips the transcode, 'none' deletes the audio
+        // once the final pass has run.
+        archiveFormat: 'flac',
+
+        passEnabled: true,
+        model: 'large-v3-turbo',
+        // A second, different model for cross-checking. Doubles the runtime and
+        // marks every span where the two disagree. Empty = off.
+        diffModel: '',
+        beamSize: 5,
+        computeType: 'auto',
+        cpuThreads: 0,
+        // Words the model scored below this are marked ~like this~ so whoever
+        // corrects the transcript knows where to look.
+        wordConfidence: 0.5
+      },
+
       whisper: {
         model: 'small',
         language: 'auto',
+        // Domain vocabulary — names, products, file names, jargon. Passed to
+        // faster-whisper as hotwords, which biases the decoder towards these
+        // tokens. This is the only thing that reliably fixes proper nouns: a
+        // bigger model helps with everything else, but it cannot guess a word
+        // it has never seen. Comma- or newline-separated; a line starting with
+        // "#" is prose context for the model instead of a term to boost.
+        glossary: '',
         device: 'auto',
         computeType: 'auto',
         cpuThreads: 0,
