@@ -53,7 +53,8 @@ class WhisperWorkerService {
       device: options.device || 'auto',
       compute_type: options.computeType || 'auto',
       cpu_threads: options.cpuThreads || 0,
-      beam_size: options.beamSize || 1
+      beam_size: options.beamSize || 1,
+      hotwords: options.hotwords || ''
     });
     this._scheduleIdleUnload();
     return result;
