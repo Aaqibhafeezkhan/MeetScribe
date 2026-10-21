@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openMeetingFolder: () => ipcRenderer.invoke('meeting:open-folder'),
   takeScreenshot: () => ipcRenderer.invoke('meeting:screenshot'),
   addMarker: (text) => ipcRenderer.invoke('meeting:add-marker', text),
+  getFinalPassStatus: () => ipcRenderer.invoke('meeting:final-status'),
+  rerunFinalPass: (folder) => ipcRenderer.invoke('meeting:rerun-final', folder),
+  pickAndRerunFinalPass: () => ipcRenderer.invoke('meeting:pick-and-rerun'),
 
   // ── Audio engine (called from the hidden capture renderer) ──
   sendAudioChunk: (streamId, buffer) => ipcRenderer.send('audio-chunk', { streamId, buffer }),
@@ -78,6 +81,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSettingsWindowShown: (cb) => on('settings-window-shown', cb),
   onInstallProgress: (cb) => on('install-progress', cb),
   onMainWindowShown: (cb) => on('main-window-shown', cb),
+  onFinalPass: (cb) => on('final-pass', cb),
 
   notifyMainWindowReady: () => ipcRenderer.send('main-window-ready')
 });
