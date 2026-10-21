@@ -6,11 +6,69 @@ const logger = require('../core/logger').createServiceLogger('STREAM');
 
 // Words a pure sign-off can be built from. A line made only of these, opening
 // with a thanks or a goodbye, carries no meeting content.
-const CLOSING_VOCABULARY = new Set([
-  'thank', 'thanks', 'you', 'so', 'very', 'much', 'all', 'again', 'guys',
-  'everyone', 'for', 'your', 'time', 'watching', 'listening', 'joining',
-  'today', 'bye', 'goodbye', 'and', 'the', 'to', 'us'
-]);
+//
+// Keyed by language, because the failure mode is language-specific: these come
+// from the caption corpora Whisper was trained on, and a German meeting
+// produces German boilerplate ("Vielen Dank", "Untertitel von …") that an
+// English list never sees.
+const CLOSING_VOCABULARY = {
+  en: new Set([
+    'thank', 'thanks', 'you', 'so', 'very', 'much', 'all', 'again', 'guys',
+    'everyone', 'for', 'your', 'time', 'watching', 'listening', 'joining',
+    'today', 'bye', 'goodbye', 'and', 'the', 'to', 'us'
+  ]),
+  de: new Set([
+    'danke', 'dankeschön', 'vielen', 'dank', 'schön', 'euch', 'ihnen', 'allen',
+    'fürs', 'für', 'das', 'die', 'der', 'zuschauen', 'zuhören', 'zusehen',
+    'aufmerksamkeit', 'ihre', 'eure', 'tschüss', 'wiedersehen', 'auf', 'bis',
+    'zum', 'nächsten', 'mal', 'und', 'sehr'
+  ])
+};
+
+const CLOSING_OPENERS = {
+  en: /^(thank|thanks|bye|goodbye)$/,
+  de: /^(danke|dankeschön|tschüss|tschüs|wiedersehen|auf)$/
+};
+
+// Exact lines that are never meeting content. `base` applies whatever the
+// language is; the rest is added for the language actually being transcribed.
+const STOCK_PHRASES = {
+  base: [
+    'music', 'applause', 'laughter', 'silence', 'inaudible', 'blank audio',
+    'musik', 'applaus', 'gelächter', 'stille'
+  ],
+  en: [
+    'thank you', 'thank you for watching', 'thanks for watching',
+    'thank you so much for watching', 'please subscribe', 'like and subscribe',
+    'you', 'bye', 'bye bye', 'okay', 'ok', 'so', 'the end',
+    'subtitles by the amara org community',
+    // Sentence fragments, typically a word of the meeting audio caught by the
+    // microphone between echo-cancellation passes. They carry no content and
+    // are too short for echo suppression's word-overlap test to catch.
+    'the', 'a', 'an', 'and', 'but', 'or', 'of', 'to', 'in', 'is', 'it',
+    'i', 'that', 'uh', 'um', 'mm', 'hmm', 'ah', 'eh', 'huh'
+  ],
+  de: [
+    // The German caption-corpus boilerplate. Whisper emits these on silence and
+    // on room noise with complete confidence — they were all over two German
+    // meetings recorded with this app.
+    'vielen dank', 'danke', 'dankeschön', 'danke schön', 'vielen dank fürs zuschauen',
+    'vielen dank für ihre aufmerksamkeit', 'bis zum nächsten mal', 'tschüss',
+    'auf wiedersehen', 'guten tag', 'guten morgen', 'gute nacht', 'das war es',
+    'untertitel von stephanie geiges', 'untertitelung des zdf 2020',
+    'untertitel im auftrag des zdf für funk 2017', 'untertitel der deutschen welle',
+    'untertitel', 'copyright wdr', 'das ende',
+    // Function-word fragments. "ja" and "nein" are deliberately absent: unlike
+    // these, a bare yes or no is a real answer to a real question.
+    'und', 'der', 'die', 'das', 'ein', 'eine', 'ich', 'du', 'es', 'ist', 'so',
+    'aber', 'oder', 'auch', 'noch', 'äh', 'ähm', 'hm', 'mhm', 'ach', 'na'
+  ]
+};
+
+// A run of one character this long is not speech. Room noise decodes into
+// things like "Bisssss…sss" — one 500-character "word" that sails through both
+// the phrase and the token repetition guards, because it is a single token.
+const CHARACTER_RUN_LIMIT = 24;
 
 /**
  * One audio stream's worth of voice-activity detection and segmentation.
@@ -35,12 +93,15 @@ class TranscriptionStream extends EventEmitter {
    * @param {object}   options.vad         VAD tunables (see core/config.js)
    * @param {object}   options.transcriber object with transcribe(wavPath, opts)
    */
-  constructor({ id, label, vad, transcriber }) {
+  constructor({ id, label, vad, transcriber, language }) {
     super();
     this.id = id;
     this.label = label;
     this.vad = vad;
     this.transcriber = transcriber;
+    // Which stock-phrase list to apply. Whisper's hallucinations are in the
+    // language it is decoding, so the guard has to be too.
+    this.language = language || 'auto';
 
     this.isActive = false;
     this.segmentBuffers = [];
@@ -56,9 +117,10 @@ class TranscriptionStream extends EventEmitter {
     this._resetVadState();
   }
 
-  updateSettings({ vad, label } = {}) {
+  updateSettings({ vad, label, language } = {}) {
     if (vad) this.vad = vad;
     if (label) this.label = label;
+    if (language) this.language = language;
   }
 
   start() {
@@ -371,6 +433,9 @@ class TranscriptionStream extends EventEmitter {
       .trim();
     if (!text) return null;
 
+    // Not speech: a single character held down for half a line.
+    if (new RegExp('(.)\\1{' + CHARACTER_RUN_LIMIT + ',}', 'u').test(text)) return null;
+
     const phrases = text.match(/[^.!?,;]+[.!?,;]*/g) || [text];
     const kept = [];
     let previousKey = null;
@@ -393,43 +458,43 @@ class TranscriptionStream extends EventEmitter {
     return this._isStockPhrase(cleaned) ? null : cleaned;
   }
 
+  /**
+   * Which languages' boilerplate to screen for. With an explicit language it is
+   * that one plus English (the model falls back to English stock phrases on
+   * junk audio whatever it was told); on auto-detect, everything we know about.
+   */
+  _activeLanguages() {
+    const language = String(this.language || 'auto').toLowerCase();
+    if (language === 'auto' || !language) return Object.keys(STOCK_PHRASES).filter((key) => key !== 'base');
+    return language === 'en' ? ['en'] : [language, 'en'];
+  }
+
   _isStockPhrase(text) {
     const normalized = text.toLowerCase().replace(/[\s.,!?¡¿"'`]+/g, ' ').trim();
     if (!normalized) return true;
-    const HALLUCINATIONS = new Set([
-      'thank you',
-      'thank you for watching',
-      'thanks for watching',
-      'thank you so much for watching',
-      'please subscribe',
-      'like and subscribe',
-      'you',
-      'bye',
-      'bye bye',
-      'okay',
-      'ok',
-      'so',
-      'the end',
-      'subtitles by the amara org community',
-      // Sound tags the model writes as plain words rather than in brackets.
-      'music', 'applause', 'laughter', 'silence', 'inaudible', 'blank audio',
-      // Sentence fragments, typically a word of the meeting audio caught by the
-      // microphone between echo-cancellation passes. They carry no content and
-      // are too short for echo suppression's word-overlap test to catch.
-      'the', 'a', 'an', 'and', 'but', 'or', 'of', 'to', 'in', 'is', 'it',
-      'i', 'that', 'uh', 'um', 'mm', 'hmm', 'ah', 'eh', 'huh'
-    ]);
-    if (HALLUCINATIONS.has(normalized)) return true;
+
+    const languages = this._activeLanguages();
+    const phrases = new Set(STOCK_PHRASES.base);
+    for (const language of languages) {
+      for (const phrase of STOCK_PHRASES[language] || []) phrases.add(phrase);
+    }
+    if (phrases.has(normalized)) return true;
 
     // The exact-match list can't keep up with the sign-off family — Whisper
     // improvises endlessly around it ("Thank you very much for your time.
-    // Thank you very much."). Treat a line as stock when it thanks or signs off
-    // and contains nothing else: every word comes from the closing vocabulary,
-    // so there is no meeting content to lose. A genuine "Thanks, that answers
-    // my question" keeps its content words and survives.
+    // Thank you very much.", "Vielen Dank fürs Zuschauen, vielen Dank."). Treat
+    // a line as stock when it thanks or signs off and contains nothing else:
+    // every word comes from the closing vocabulary, so there is no meeting
+    // content to lose. A genuine "Danke, das beantwortet meine Frage" keeps its
+    // content words and survives.
     const words = normalized.split(' ').filter(Boolean);
-    const opensWithThanks = /^(thank|thanks|bye|goodbye)$/.test(words[0] || '');
-    return opensWithThanks && words.every((word) => CLOSING_VOCABULARY.has(word));
+    for (const language of languages) {
+      const opener = CLOSING_OPENERS[language];
+      const vocabulary = CLOSING_VOCABULARY[language];
+      if (!opener || !vocabulary) continue;
+      if (opener.test(words[0] || '') && words.every((word) => vocabulary.has(word))) return true;
+    }
+    return false;
   }
 
   _cleanupTempDir() {
