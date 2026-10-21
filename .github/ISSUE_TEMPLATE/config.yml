@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/AmineChr54/MeetScribe/discussions
+    about: Ask questions or float ideas before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/AmineChr54/MeetScribe/security/advisories/new
+    about: Report privately, never in a public issue.

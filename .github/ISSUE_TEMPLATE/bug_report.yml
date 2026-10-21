@@ -1,0 +1,49 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Privacy:** do not paste transcripts, audio, or names from real meetings. Redact log lines that contain speech text.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you expected vs. what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MeetScribe version
+      placeholder: 1.1.1
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: 3.12.4
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Transcription device
+      options: [CPU, NVIDIA GPU (CUDA), Not sure]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (redacted)
+      render: text

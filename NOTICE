@@ -1,0 +1,8 @@
+MeetScribe
+Copyright 2025-2026 MeetScribe contributors
+
+This project began as a fork of OpenCluely (https://github.com/TechyCSR/OpenCluely),
+Copyright TechyCSR, licensed under the Apache License, Version 2.0.
+
+Speech recognition is provided at runtime by faster-whisper (MIT) and
+OpenAI Whisper models (MIT), installed separately by the user.

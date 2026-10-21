@@ -1,0 +1,29 @@
+name: Claude PR review
+
+# Automatic review on PRs from this repo. Skipped for forks (no secret access)
+# and when ANTHROPIC_API_KEY is not configured.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR against CLAUDE.md. Focus on correctness, Electron IPC safety
+            (preload/contextIsolation), the Python worker JSON-lines protocol, and privacy:
+            flag any committed transcripts, audio, personal paths/emails or secrets.
+            Be concise; only comment on real issues.
