@@ -54,6 +54,8 @@ process.on("unhandledRejection", (reason) => {
 const captureService = require("./src/services/capture.service");
 const transcriptionService = require("./src/services/transcription.service");
 const meetingService = require("./src/services/meeting.service");
+const audioArchive = require("./src/services/audio-archive.service");
+const offlinePass = require("./src/services/offline-pass.service");
 const windowManager = require("./src/managers/window.manager");
 
 class ApplicationController {
@@ -306,6 +308,34 @@ class ApplicationController {
         message: `Could not write the transcript: ${message}`,
       });
     });
+
+    // The final pass runs for minutes after the meeting ends. Surface it, or it
+    // looks like the app is idle while it is doing the most useful work it does.
+    offlinePass.on("progress", (payload) => {
+      windowManager.broadcastToAllWindows("final-pass", { ...payload, running: true });
+    });
+
+    offlinePass.on("done", (payload) => {
+      windowManager.broadcastToAllWindows("final-pass", {
+        state: "done",
+        pct: 1,
+        running: false,
+        message: "Final transcript ready",
+        ...payload,
+      });
+    });
+
+    offlinePass.on("failed", (payload) => {
+      windowManager.broadcastToAllWindows("final-pass", {
+        state: "failed",
+        running: false,
+        message: `Final pass failed: ${payload.error}`,
+        ...payload,
+      });
+      windowManager.broadcastToAllWindows("transcription-error", {
+        message: `Final pass failed: ${payload.error}`,
+      });
+    });
   }
 
   // ── Recording lifecycle ──
@@ -331,6 +361,22 @@ class ApplicationController {
       return null;
     }
 
+    // Start archiving before capture, so the recording covers the meeting from
+    // its first chunk. A failure here must not stop the meeting — a live
+    // transcript with no archive still beats no transcript at all.
+    if (settingsStore.get("archiveAudio")) {
+      try {
+        audioArchive.start(status.folder, {
+          system: settingsStore.get("labelSystem") || "Them",
+          mic: settingsStore.get("labelMic") || "You",
+        });
+      } catch (error) {
+        windowManager.broadcastToAllWindows("transcription-error", {
+          message: `Audio archiving is off for this meeting: ${error.message}`,
+        });
+      }
+    }
+
     transcriptionService.start();
     await this.startAudioCapture();
 
@@ -348,12 +394,152 @@ class ApplicationController {
     await this.stopAudioCapture();
     // Stop transcription after capture so buffered audio still gets flushed.
     await transcriptionService.stop();
+    const events = meetingService.getEvents();
+    const archive = await audioArchive.stop();
     const status = await meetingService.stop();
 
     windowManager.handleRecordingStopped();
     windowManager.broadcastToAllWindows("meeting-stopped", status);
     logger.info("Recording stopped", { folder: status.folder });
+
+    // The final pass runs in the background: it takes minutes, and nothing in
+    // the app is waiting on it. The live transcript is already on disk.
+    if (archive && settingsStore.get("offlinePassEnabled") && transcriptionService.isAvailable()) {
+      this.runFinalPass({ folder: status.folder, meta: archive, events }).catch((error) =>
+        logger.error("Final pass could not be started", { error: error.message })
+      );
+    }
+
     return status;
+  }
+
+  /**
+   * The second pass over the archived audio. Broadcasts progress so the overlay
+   * can show it, then compresses the archive once the transcript exists.
+   */
+  async runFinalPass({ folder, meta, events = [] }) {
+    if (offlinePass.isRunning()) {
+      return { ok: false, error: "A final pass is already running" };
+    }
+
+    const paths = transcriptionService.getPaths();
+    const result = await offlinePass.run({ folder, meta, events, paths });
+
+    if (result.ok) {
+      await this.compressArchive(meta, paths);
+    }
+    return result;
+  }
+
+  /**
+   * Shrink the archive once it has been transcribed. FLAC is lossless and
+   * roughly halves it, which matters because the audio is kept precisely so a
+   * better model can be run over it later.
+   */
+  async compressArchive(meta, paths) {
+    const format = settingsStore.get("archiveFormat");
+    if (!format || format === "wav") return;
+
+    for (const entry of meta.streams || []) {
+      if (!fs.existsSync(entry.path)) continue;
+
+      if (format === "none") {
+        try {
+          fs.rmSync(entry.path, { force: true });
+          logger.info("Archived audio deleted after the final pass", { file: entry.path });
+        } catch (error) {
+          logger.warn("Could not delete archived audio", { error: error.message });
+        }
+        continue;
+      }
+
+      const target = entry.path.replace(/\.wav$/i, ".flac");
+      try {
+        const output = await this.runPythonScript(paths.python, paths.transcodeScript, [entry.path, target], paths.env);
+        const parsed = JSON.parse(output.trim().split(/\r?\n/).pop() || "{}");
+        if (parsed.ok) {
+          fs.rmSync(entry.path, { force: true });
+          entry.path = target;
+          logger.info("Archived audio compressed", {
+            file: target,
+            saved: `${Math.round((1 - parsed.bytes / parsed.sourceBytes) * 100)}%`,
+          });
+        } else {
+          logger.warn("FLAC transcode failed; keeping the WAV", { error: parsed.error });
+        }
+      } catch (error) {
+        logger.warn("FLAC transcode failed; keeping the WAV", { error: error.message });
+      }
+    }
+
+    // meta.json points at the archive; keep it truthful after the rename.
+    try {
+      const metaPath = path.join(path.dirname(meta.streams[0].path), "meta.json");
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+    } catch (error) {
+      logger.warn("Could not update archive meta.json", { error: error.message });
+    }
+  }
+
+  runPythonScript(python, script, args, env) {
+    return new Promise((resolve, reject) => {
+      const { spawn } = require("child_process");
+      const child = spawn(python, ["-u", script, ...args], { windowsHide: true, env });
+      let out = "";
+      child.stdout.on("data", (chunk) => {
+        out += chunk.toString();
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) resolve(out);
+        else reject(new Error(`${path.basename(script)} exited with code ${code}`));
+      });
+    });
+  }
+
+  /**
+   * Re-run the final pass on a meeting that was already recorded — after
+   * editing its glossary.txt, or with a different model. This is the loop that
+   * makes the archive worth keeping.
+   */
+  async rerunFinalPass(folder) {
+    try {
+      const target = folder || meetingService.folder;
+      if (!target) return { ok: false, error: "No meeting folder was given" };
+
+      const metaPath = path.join(target, "audio", "meta.json");
+      if (!fs.existsSync(metaPath)) {
+        return { ok: false, error: "This meeting has no archived audio (audio/meta.json is missing)" };
+      }
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+
+      // Paths in meta.json are from the original recording; the folder may have
+      // moved, and the WAVs may since have become FLACs.
+      for (const entry of meta.streams || []) {
+        const candidates = [
+          entry.path,
+          path.join(target, "audio", `${entry.stream}.flac`),
+          path.join(target, "audio", `${entry.stream}.wav`),
+        ];
+        const found = candidates.find((candidate) => candidate && fs.existsSync(candidate));
+        if (found) entry.path = found;
+      }
+
+      let events = [];
+      const eventsPath = path.join(target, "events.json");
+      if (fs.existsSync(eventsPath)) {
+        try {
+          events = JSON.parse(fs.readFileSync(eventsPath, "utf8"));
+        } catch (error) {
+          logger.warn("Could not read events.json", { error: error.message });
+        }
+      }
+
+      return await this.runFinalPass({ folder: target, meta, events });
+    } catch (error) {
+      logger.error("Re-run of the final pass failed", { error: error.message });
+      return { ok: false, error: error.message };
+    }
   }
 
   toggleRecording() {
@@ -488,6 +674,22 @@ class ApplicationController {
     ipcMain.handle("meeting:open-folder", () => this.openMeetingFolder());
     ipcMain.handle("meeting:screenshot", () => this.captureMeetingScreenshot());
     ipcMain.handle("meeting:add-marker", (_event, text) => this.addMarker(text));
+    ipcMain.handle("meeting:final-status", () => offlinePass.getStatus());
+    ipcMain.handle("meeting:rerun-final", (_event, folder) => this.rerunFinalPass(folder));
+
+    ipcMain.handle("meeting:pick-and-rerun", async () => {
+      const result = await dialog.showOpenDialog({
+        title: "Pick a meeting folder to re-transcribe",
+        defaultPath: settingsStore.get("transcriptRoot"),
+        properties: ["openDirectory"],
+      });
+      if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true };
+      // Fire and forget: this takes minutes and reports through 'final-pass'.
+      this.rerunFinalPass(result.filePaths[0]).catch((error) =>
+        logger.error("Re-run failed", { error: error.message })
+      );
+      return { ok: true, folder: result.filePaths[0] };
+    });
 
     // ── Audio engine ──
     ipcMain.on("audio-chunk", (_event, data) => {
@@ -772,6 +974,10 @@ class ApplicationController {
     globalShortcut.unregisterAll();
     // Close the transcript file before the process goes away so a quit during
     // a meeting still leaves a complete, closed file.
+    // Patch the WAV headers before the process goes away, so a quit mid-meeting
+    // still leaves a playable archive rather than a truncated one.
+    audioArchive.stopSync();
+    offlinePass.cancel();
     meetingService.shutdown();
     transcriptionService.shutdown();
     windowManager.destroyAllWindows();
@@ -780,6 +986,8 @@ class ApplicationController {
 
   quit() {
     try {
+      audioArchive.stopSync();
+      offlinePass.cancel();
       meetingService.shutdown();
       transcriptionService.shutdown();
       windowManager.destroyAllWindows();

@@ -5,6 +5,7 @@ const { app } = require('electron');
 
 const TranscriptionStream = require('./transcription-stream');
 const whisperPool = require('./whisper-pool.service');
+const audioArchive = require('./audio-archive.service');
 const settingsStore = require('../core/settings.store');
 const logger = require('../core/logger').createServiceLogger('TRANSCRIPTION');
 
@@ -51,6 +52,7 @@ class TranscriptionService extends EventEmitter {
       computeType: settings.whisperComputeType,
       cpuThreads: settings.whisperCpuThreads,
       beamSize: settings.whisperBeamSize,
+      hotwords: this.getGlossaryHotwords(settings),
       workerCount: settings.whisperWorkerCount,
       idleUnloadMs: settings.whisperIdleUnloadMs
     });
@@ -72,13 +74,14 @@ class TranscriptionService extends EventEmitter {
     for (const { id, label } of definitions) {
       const existing = this.streams.get(id);
       if (existing) {
-        existing.updateSettings({ vad, label });
+        existing.updateSettings({ vad, label, language: settings.whisperLanguage });
         continue;
       }
       const stream = new TranscriptionStream({
         id,
         label,
         vad,
+        language: settings.whisperLanguage,
         transcriber: {
           transcribe: (wavPath, meta) => whisperPool.transcribe(wavPath, meta)
         }
@@ -158,11 +161,38 @@ class TranscriptionService extends EventEmitter {
     return this.getStatus();
   }
 
-  /** Feed PCM16 @ 16kHz mono from the audio engine. */
+  /**
+   * Feed PCM16 @ 16kHz mono from the audio engine.
+   *
+   * The archive is written from here, before the VAD sees the buffer: it has to
+   * be a continuous recording for the final pass to derive wall-clock times
+   * from it. Archiving VAD segments instead would glue voiced fragments
+   * together and silently shift every timestamp after the first pause.
+   */
   ingest(streamId, buffer) {
     if (!this.isRecording) return;
+    audioArchive.write(streamId, buffer);
     const stream = this.streams.get(streamId);
     if (stream) stream.ingest(buffer);
+  }
+
+  /**
+   * The glossary as a hotwords string. Same list feeds the live pass and the
+   * final one, so a term the user adds is boosted everywhere.
+   */
+  getGlossaryHotwords(settings = settingsStore.all()) {
+    const raw = String(settings.glossary || '');
+    const terms = [];
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      // "#" notes and ">" prose context are not terms to boost.
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('>')) continue;
+      for (const term of trimmed.split(',')) {
+        const clean = term.trim();
+        if (clean) terms.push(clean);
+      }
+    }
+    return terms.slice(0, 120).join(', ');
   }
 
   getStatus() {
@@ -278,6 +308,18 @@ class TranscriptionService extends EventEmitter {
 
   // ── Path resolution ──
 
+  /** Where the final pass finds the interpreter, its script, and the models. */
+  getPaths() {
+    const python = this._resolvePythonPath(settingsStore.all());
+    return {
+      python,
+      script: this._resolveScriptPath('whisper_offline.py'),
+      transcodeScript: this._resolveScriptPath('transcode_flac.py'),
+      modelDir: this._resolveModelDir(),
+      env: whisperPool.buildEnv(python)
+    };
+  }
+
   _resolvePythonPath(settings) {
     if (settings.whisperPython && fs.existsSync(settings.whisperPython)) {
       return settings.whisperPython;
@@ -289,9 +331,9 @@ class TranscriptionService extends EventEmitter {
     return fs.existsSync(candidate) ? candidate : '';
   }
 
-  _resolveScriptPath() {
+  _resolveScriptPath(name = 'whisper_worker.py') {
     // In a packaged build the script is unpacked next to app.asar.
-    const packed = path.join(__dirname, '..', '..', 'scripts', 'whisper_worker.py');
+    const packed = path.join(__dirname, '..', '..', 'scripts', name);
     const unpacked = packed.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
     return fs.existsSync(unpacked) ? unpacked : packed;
   }

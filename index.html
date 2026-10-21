@@ -76,6 +76,28 @@
     }
     .status.passthrough { background: #6b6b73; }
 
+    /* Progress of the post-meeting final pass over the archived audio. */
+    .final {
+      -webkit-app-region: no-drag;
+      display: none;
+      align-items: center;
+      gap: 5px;
+      color: #9ecbff;
+      font-size: 10px;
+      padding: 0 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .final.show { display: inline-flex; }
+    .final .spin {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #6fb4ff; flex: 0 0 auto;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    .final.ok .spin { background: #35c46a; animation: none; }
+    .final.err { color: #ffb3ad; }
+    .final.err .spin { background: #ff5f57; animation: none; }
+
     .warn {
       -webkit-app-region: no-drag;
       display: none;
@@ -107,6 +129,7 @@
     <span class="divider"></span>
 
     <button class="item" id="settingsBtn" title="Settings (Ctrl+,)">Settings</button>
+    <span class="final" id="final" title="Final pass over the archived audio - click to open the meeting folder"><span class="spin"></span><span id="finalText"></span></span>
     <span class="warn" id="warn" title="Click to open Settings"></span>
     <span class="status" id="status" title="Click-through toggle (Alt+A)"></span>
   </div>

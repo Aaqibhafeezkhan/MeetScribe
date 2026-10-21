@@ -84,20 +84,33 @@ class WhisperPool {
    * the DLLs under `site-packages/nvidia/<pkg>/bin`, which is not on PATH.
    * Without this the CUDA path fails with "Could not locate cudnn_ops64_9.dll".
    */
+  /** The final pass runs its own Python process and needs the same PATH. */
+  buildEnv(pythonPath) {
+    return this._buildEnv(pythonPath);
+  }
+
   _buildEnv(pythonPath) {
-    if (process.platform !== 'win32' || !pythonPath) return undefined;
+    // huggingface_hub links snapshot files to its blob store, and creating a
+    // symlink on Windows needs Developer Mode or admin rights. Without this a
+    // model download dies at the very last step with "WinError 1314: A required
+    // privilege is not held by the client" — after fetching the entire file,
+    // leaving a directory that looks complete but is missing config.json.
+    // Setting it makes the hub copy instead of link.
+    const env = { ...process.env, HF_HUB_DISABLE_SYMLINKS: '1' };
+    if (process.platform !== 'win32' || !pythonPath) return env;
     try {
       const sitePackages = path.join(path.dirname(pythonPath), '..', 'Lib', 'site-packages', 'nvidia');
-      if (!fs.existsSync(sitePackages)) return undefined;
+      if (!fs.existsSync(sitePackages)) return env;
       const binDirs = fs
         .readdirSync(sitePackages)
         .map((name) => path.join(sitePackages, name, 'bin'))
         .filter((dir) => fs.existsSync(dir));
-      if (binDirs.length === 0) return undefined;
-      return { ...process.env, PATH: `${binDirs.join(path.delimiter)}${path.delimiter}${process.env.PATH}` };
+      if (binDirs.length === 0) return env;
+      env.PATH = `${binDirs.join(path.delimiter)}${path.delimiter}${process.env.PATH}`;
+      return env;
     } catch (error) {
       logger.debug('Could not build CUDA env', { error: error.message });
-      return undefined;
+      return env;
     }
   }
 
@@ -119,7 +132,8 @@ class WhisperPool {
       // happily "detects" a random language on near-silent segments, producing
       // confident nonsense in a language nobody in the meeting is speaking.
       language: o.language || 'auto',
-      beamSize: o.beamSize || 1
+      beamSize: o.beamSize || 1,
+      hotwords: o.hotwords || ''
     };
   }
 

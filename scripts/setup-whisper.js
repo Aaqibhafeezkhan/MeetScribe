@@ -44,6 +44,10 @@ function run(command, commandArgs, options = {}) {
   const result = spawnSync(command, commandArgs, {
     stdio: ['ignore', 'inherit', 'inherit'],
     windowsHide: true,
+    // huggingface_hub symlinks snapshot files to its blob store, which on
+    // Windows needs Developer Mode or admin rights. Without this the model
+    // download fails with WinError 1314 after downloading the whole file.
+    env: { ...process.env, HF_HUB_DISABLE_SYMLINKS: '1' },
     ...options
   });
   if (result.error) throw new Error(`${command} failed: ${result.error.message}`);

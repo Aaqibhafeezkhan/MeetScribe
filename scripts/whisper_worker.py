@@ -136,12 +136,17 @@ def handle_transcribe(request):
         raise ValueError('audio_path is required')
 
     language = request.get('language') or 'auto'
+    # Domain vocabulary. Biasing the decoder towards these tokens is the only
+    # thing that reliably lands a proper noun the model has never seen; model
+    # size fixes almost everything else but cannot invent a word it lacks.
+    hotwords = (request.get('hotwords') or '').strip() or None
     started = time.time()
 
     segments, info = model.transcribe(
         audio_path,
         language=None if language in ('auto', '', None) else language,
         beam_size=int(request.get('beam_size') or 1),
+        hotwords=hotwords,
         # The JS side already ran VAD and handed us a trimmed utterance;
         # faster-whisper's own Silero VAD would double-trim and add latency.
         vad_filter=False,

@@ -33,6 +33,7 @@ class MeetingService extends EventEmitter {
     this.lineCount = 0;
     this.shotCount = 0;
     this.pending = [];
+    this.events = [];
     this.flushTimer = null;
     // Injected by main.js: returns the earliest start time still being
     // transcribed, so a screenshot taken at 14:32:05 cannot be written above
@@ -86,6 +87,11 @@ class MeetingService extends EventEmitter {
     this.shotCount = 0;
     this.active = true;
     this.pending = [];
+    // Screenshots and markers, kept so the final pass can weave them back into
+    // a transcript it rebuilds from the audio rather than from transcript.txt.
+    this.events = [];
+
+    this._snapshotGlossary();
 
     const labelSystem = settingsStore.get('labelSystem');
     const labelMic = settingsStore.get('labelMic');
@@ -111,6 +117,18 @@ class MeetingService extends EventEmitter {
 
     const status = this.getStatus();
     status.durationMs = durationMs;
+
+    // Markers and screenshots outlive the process, so re-running the final pass
+    // months later can still weave them back into the rebuilt transcript.
+    try {
+      fs.writeFileSync(
+        path.join(this.folder, 'events.json'),
+        JSON.stringify(this.getEvents(), null, 2),
+        'utf8'
+      );
+    } catch (error) {
+      logger.warn('Could not write events.json', { error: error.message });
+    }
 
     this._closeFd();
     this.active = false;
@@ -165,7 +183,43 @@ class MeetingService extends EventEmitter {
     return entry;
   }
 
+  /** Screenshots and markers, in the order they happened. */
+  getEvents() {
+    return (this.events || []).slice();
+  }
+
+  /**
+   * Copy the glossary into the meeting folder at the moment recording starts.
+   *
+   * Two reasons it lives here rather than only in settings: a re-run months
+   * later then biases with the vocabulary of *that* meeting, and the file can
+   * be edited by hand before re-running the final pass — which is the whole
+   * point of having a per-project glossary at all.
+   */
+  _snapshotGlossary() {
+    const glossary = String(settingsStore.get('glossary') || '').trim();
+    const header = [
+      '# Glossary for this meeting: names, products, file names, jargon.',
+      '# One term per line, or several separated by commas.',
+      '# Lines starting with "#" are notes and are ignored.',
+      '# A line starting with ">" is prose context handed to the model, e.g.',
+      '#   > Ein Meeting ueber die BAUMAX-Migration.',
+      '# Edit this file and re-run the final pass to re-transcribe with it.',
+      ''
+    ].join('\r\n');
+    try {
+      fs.writeFileSync(path.join(this.folder, 'glossary.txt'), header + glossary + '\r\n', 'utf8');
+    } catch (error) {
+      logger.warn('Could not write glossary.txt', { error: error.message });
+    }
+  }
+
   _enqueue(entry) {
+    if (entry.kind === 'screenshot' || entry.kind === 'marker') {
+      if (!this.events) this.events = [];
+      this.events.push({ kind: entry.kind, text: entry.text, startedAt: entry.startedAt });
+    }
+
     const reorderMs = Number(settingsStore.get('reorderWindowMs')) || 0;
     if (reorderMs <= 0) {
       // Reordering explicitly disabled: write in completion order.
