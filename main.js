@@ -56,6 +56,8 @@ const transcriptionService = require("./src/services/transcription.service");
 const meetingService = require("./src/services/meeting.service");
 const audioArchive = require("./src/services/audio-archive.service");
 const offlinePass = require("./src/services/offline-pass.service");
+const modelStore = require("./src/services/model-store.service");
+const speedStats = require("./src/services/speed-stats.service");
 const windowManager = require("./src/managers/window.manager");
 
 class ApplicationController {
@@ -314,6 +316,10 @@ class ApplicationController {
 
     // The final pass runs for minutes after the meeting ends. Surface it, or it
     // looks like the app is idle while it is doing the most useful work it does.
+    modelStore.on("progress", (payload) => {
+      windowManager.broadcastToAllWindows("model-progress", payload);
+    });
+
     offlinePass.on("progress", (payload) => {
       windowManager.broadcastToAllWindows("final-pass", { ...payload, running: true });
     });
@@ -568,6 +574,48 @@ class ApplicationController {
     }
   }
 
+  // ── Models ──
+
+  /** Catalog + cache state, each with its learned "minutes per 1 h meeting". */
+  listModels() {
+    const settings = settingsStore.all();
+    const { modelDir } = transcriptionService.getPaths();
+    const mode = settings.offlineMode === "quality" ? "quality" : "fast";
+    const threads = Number(settings.offlineCpuThreads) || offlinePass.DEFAULT_CPU_THREADS;
+    const rows = modelStore.list(modelDir, {
+      live: settings.whisperModel,
+      final: settings.offlineModel,
+      diff: settings.offlineDiffModel,
+    });
+    return rows.map((row) => ({ ...row, estimate: speedStats.estimate(row.id, row, mode, threads) }));
+  }
+
+  downloadModel(id) {
+    try {
+      // Progress and the outcome arrive as "model-progress" events.
+      modelStore.download(id, transcriptionService.getPaths()).catch(() => {});
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+
+  deleteModel(id) {
+    const settings = settingsStore.all();
+    const status = offlinePass.getStatus();
+    try {
+      return modelStore.remove(id, transcriptionService.getPaths().modelDir, {
+        recording: transcriptionService.isRecording,
+        liveModel: settings.whisperModel,
+        finalRunning: status.running,
+        finalModel: settings.offlineModel,
+        diffModel: settings.offlineDiffModel,
+      });
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+
   toggleRecording() {
     if (transcriptionService.isRecording) {
       this.stopRecording().catch((error) =>
@@ -793,6 +841,9 @@ class ApplicationController {
 
     // ── Whisper setup ──
     ipcMain.handle("whisper:status", () => transcriptionService.getStatus());
+    ipcMain.handle("models:list", () => this.listModels());
+    ipcMain.handle("models:download", (_event, id) => this.downloadModel(id));
+    ipcMain.handle("models:delete", (_event, id) => this.deleteModel(id));
 
     ipcMain.handle("whisper:install", async (event, options = {}) => {
       const sender = event.sender;

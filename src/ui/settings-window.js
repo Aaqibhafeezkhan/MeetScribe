@@ -49,6 +49,14 @@ const FIELDS = {
   startClickThrough: 'check'
 };
 
+// Settings that change what the model list shows.
+const MODEL_SETTINGS = ['whisperModel', 'offlineModel', 'offlineDiffModel', 'offlineMode', 'offlineCpuThreads'];
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  return bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : Math.round(bytes / 1e6) + ' MB';
+}
+
 class SettingsWindow {
   constructor() {
     this.settings = null;
@@ -59,6 +67,7 @@ class SettingsWindow {
     this.bindActions();
     this.bindEvents();
     this.load();
+    this.loadModels();
   }
 
   bindTabs() {
@@ -125,6 +134,15 @@ class SettingsWindow {
       status.textContent = result.ok
         ? 'Re-transcribing ' + result.folder + '…'
         : 'Could not start: ' + result.error;
+    });
+
+    window.electronAPI.onModelProgress((payload) => {
+      if (payload.state === 'downloading') {
+        const state = document.querySelector('.model[data-repo="' + CSS.escape(payload.repo) + '"] .model-state');
+        if (state) state.textContent = 'Downloading ' + Math.round((payload.progress || 0) * 100) + '%';
+      } else {
+        this.loadModels();
+      }
     });
 
     window.electronAPI.onFinalPass((payload) => {
@@ -328,8 +346,107 @@ class SettingsWindow {
     log.scrollTop = log.scrollHeight;
   }
 
+  async loadModels() {
+    try {
+      this.renderModels(await window.electronAPI.listModels());
+    } catch (error) {
+      document.getElementById('modelList').textContent = 'Could not list models: ' + error.message;
+    }
+  }
+
+  renderModels(rows) {
+    const list = document.getElementById('modelList');
+    list.textContent = '';
+    for (const row of rows) list.appendChild(this.renderModel(row));
+    this.markDownloaded(rows);
+  }
+
+  renderModel(row) {
+    const item = document.createElement('div');
+    item.className = 'model';
+    item.dataset.repo = row.repo;
+
+    const main = document.createElement('div');
+    main.className = 'model-main';
+    const name = document.createElement('div');
+    name.className = 'model-name';
+    name.textContent = row.label;
+    for (const role of row.inUse) {
+      const tag = document.createElement('span');
+      tag.className = 'model-tag';
+      tag.textContent = role === 'live' ? 'live' : role === 'final' ? 'final pass' : 'cross-check';
+      name.appendChild(tag);
+    }
+    const meta = document.createElement('div');
+    meta.className = 'model-meta';
+    const parts = [row.note];
+    if (row.roles.includes('final') && row.estimate) {
+      const minutes = Math.max(1, Math.round(row.estimate.minutes));
+      const basis = row.estimate.meetings > 0
+        ? 'from ' + row.estimate.meetings + ' meeting' + (row.estimate.meetings === 1 ? '' : 's')
+        : 'estimate';
+      parts.push('≈ ' + minutes + ' min per 1 h meeting (' + basis + ')');
+    }
+    meta.textContent = parts.filter(Boolean).join(' · ');
+    main.append(name, meta);
+
+    const state = document.createElement('span');
+    state.className = 'model-state' + (row.downloaded ? ' ok' : '');
+    if (row.downloading) state.textContent = 'Downloading ' + Math.round(row.progress * 100) + '%';
+    else if (row.downloaded) state.textContent = '✓ ' + formatSize(row.bytes);
+    // A partial download resumes where it stopped.
+    else if (row.bytes > 0) state.textContent = 'Incomplete · ' + formatSize(row.bytes);
+    else state.textContent = row.sizeMb ? 'Not downloaded · ' + formatSize(row.sizeMb * 1e6) : 'Not downloaded';
+
+    const button = document.createElement('button');
+    button.className = 'action' + (row.downloaded ? ' danger' : '');
+    if (row.downloading) {
+      button.textContent = 'Downloading…';
+      button.disabled = true;
+    } else if (row.downloaded) {
+      // Two clicks, not a dialog: a stray click must not cost a 3 GB re-download.
+      button.textContent = 'Delete';
+      button.addEventListener('click', async () => {
+        if (button.dataset.armed !== '1') {
+          button.dataset.armed = '1';
+          button.textContent = 'Confirm?';
+          setTimeout(() => { button.dataset.armed = ''; button.textContent = 'Delete'; }, 4000);
+          return;
+        }
+        const result = await window.electronAPI.deleteModel(row.id);
+        if (!result.ok) state.textContent = result.error;
+        else this.loadModels();
+      });
+    } else {
+      button.textContent = 'Download';
+      button.addEventListener('click', async () => {
+        const result = await window.electronAPI.downloadModel(row.id);
+        if (!result.ok) state.textContent = result.error;
+        else { button.disabled = true; state.textContent = 'Downloading 0%'; }
+      });
+    }
+
+    item.append(main, state, button);
+    return item;
+  }
+
+  /** "✓" on the dropdown entries that are already on disk. */
+  markDownloaded(rows) {
+    for (const id of ['whisperModel', 'offlineModel']) {
+      const select = document.getElementById(id);
+      if (!select) continue;
+      for (const option of select.options) {
+        if (!option.dataset.label) option.dataset.label = option.textContent;
+        const row = rows.find((candidate) => candidate.id === option.value || candidate.repo === option.value);
+        option.textContent = (row && row.downloaded ? '✓ ' : '') + option.dataset.label;
+      }
+    }
+  }
+
   async save(patch) {
     await window.electronAPI.saveSettings(patch);
+    // "In use" tags and the time estimates depend on these.
+    if (MODEL_SETTINGS.some((key) => key in patch)) this.loadModels();
     const saved = document.getElementById('saved');
     saved.classList.add('show');
     clearTimeout(this.savedTimer);

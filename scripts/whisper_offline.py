@@ -183,6 +183,9 @@ def transcribe_stream(model, job, entry, pass_name):
         initial_prompt=initial_prompt,
     )
 
+    # Timed from before transcribe(): fast mode runs its VAD inside the call,
+    # and that is part of what a pass costs.
+    started = time.time()
     if job.get('mode') == 'quality':
         segments, info = model.transcribe(
             entry['path'],
@@ -208,7 +211,6 @@ def transcribe_stream(model, job, entry, pass_name):
     duration = getattr(info, 'duration', None) or max(1.0, entry.get('durationMs', 1000) / 1000.0)
     collected = []
     last_pct = -1.0
-    started = time.time()
 
     for segment in segments:
         words = []
@@ -242,8 +244,14 @@ def transcribe_stream(model, job, entry, pass_name):
             })
 
     emit({'event': 'progress', 'stream': entry['stream'], 'pass': pass_name, 'pct': 1.0})
-    log('{} [{}]: {} segments in {:.1f}s'.format(
-        entry['stream'], pass_name, len(collected), time.time() - started))
+    decode_sec = time.time() - started
+    # Speech, not stream length, is what the decode time scales with; the app
+    # learns its time estimates from these two numbers.
+    speech_sec = getattr(info, 'duration_after_vad', None)
+    if speech_sec is None:
+        speech_sec = duration
+    log('{} [{}]: {} segments in {:.1f}s ({:.0f}s of speech)'.format(
+        entry['stream'], pass_name, len(collected), decode_sec, speech_sec))
 
     return {
         'stream': entry['stream'],
@@ -251,6 +259,8 @@ def transcribe_stream(model, job, entry, pass_name):
         'startedAt': entry.get('startedAt'),
         'language': getattr(info, 'language', None),
         'duration': duration,
+        'speechSec': round(float(speech_sec), 2),
+        'decodeSec': round(decode_sec, 2),
         'segments': collected,
     }
 
@@ -280,7 +290,10 @@ def main():
         'glossaryDropped': [],
     }
 
+    load_started = time.time()
     model, device, compute_type = load_model(job, job.get('model') or 'large-v3-turbo')
+    result['loadSec'] = round(time.time() - load_started, 2)
+    result['cpuThreads'] = int(job.get('cpu_threads') or 0)
     result['device'] = device
     result['computeType'] = compute_type
     # Every Whisper checkpoint shares the multilingual tokenizer, so one budget

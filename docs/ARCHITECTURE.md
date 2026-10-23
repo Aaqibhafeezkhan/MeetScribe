@@ -24,6 +24,7 @@ MeetScribe is an Electron app (main process + several renderer windows) that she
 ## Archive and offline pass
 
 - `audio-archive.service.js` records raw PCM per stream **before** VAD so timestamps stay wall-clock, writes a `timeline.jsonl` checkpoint every 5 s, pads long stalls with silence, and transcodes to FLAC via `scripts/transcode_flac.py` (PyAV).
+- `model-store.service.js` is the model catalog (aliases → Hugging Face repos), the cache status of `userData/.whisper-models`, and download/delete through faster-whisper's own `download_model`. `speed-stats.service.js` learns final-pass speed (decode seconds per speech-second, per model and mode) and speech per meeting-hour from every pass, into `userData/model-speed.json` (numbers only), and turns them into the per-model time estimate.
 - `offline-pass.service.js` runs `scripts/whisper_offline.py` after the meeting: `large-v3-turbo` at beam 2, in one of two modes: `fast` (default) runs `BatchedInferencePipeline` over Silero-VAD speech chunks, `quality` is one continuous decode with `condition_on_previous_text`. Passes are queued one at a time at below-normal priority, persisted across restarts. The glossary is trimmed to a token budget so it can't overflow the 448-token context. Temperature ladder with a compression-ratio guard against repetition loops, low-confidence words marked `~like this~`, optional `diffModel` cross-check, paragraph blocks, `## HH:MM` chapters, and an index of up to 40 uncertain spans.
 
 ## Configuration and data

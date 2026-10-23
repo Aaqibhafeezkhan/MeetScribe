@@ -80,7 +80,8 @@ All settings live in the Settings window and are stored as JSON in Electron's `u
 |---|---|
 | Audio | system loopback or named device, microphone by label |
 | Transcription | model (`small` default), language (auto), glossary hotwords, GPU/CPU |
-| Offline pass | enable, model, optional second `diffModel` cross-check |
+| Offline pass | enable, model (incl. German fine-tunes), fast/quality mode, optional second `diffModel` cross-check |
+| Models | downloaded models with size, download / delete, learned time per 1-hour meeting |
 | Archive | `flac` (default), `wav` or `none` |
 | Transcripts | root folder, default `~/Documents/MeetingTranscripts` |
 
