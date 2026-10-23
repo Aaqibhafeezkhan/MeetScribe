@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-23
+
 ### Added
 - Final pass speed setting: **Fast** (default) decodes VAD-cut speech chunks in batches on one thread per physical core; **Quality** keeps the sequential, conditioned decode (#51).
 - Final passes are queued instead of dropped when one is already running, shown as "n queued", run at below-normal priority, and resume after a restart (#48, #49).
