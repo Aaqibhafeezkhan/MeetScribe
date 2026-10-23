@@ -110,6 +110,9 @@ class TranscriptionStream extends EventEmitter {
     // Start times of segments currently being transcribed, so the transcript
     // writer can hold instantaneous events until earlier speech has landed.
     this.pendingStarts = new Set();
+    // Utterance flushes still waiting on Whisper. stop() must let them finish
+    // before deleting the temp dir, or their WAVs vanish under the worker.
+    this.inflight = new Set();
     this.segmentTimer = null;
     this.tempDir = null;
     this.tempSequence = 0;
@@ -150,6 +153,9 @@ class TranscriptionStream extends EventEmitter {
         logger.error('Final flush failed', { stream: this.id, error: error.message });
       }
     }
+    // Earlier utterances may still be queued in Whisper; their errors are
+    // already logged by _endUtteranceFlush.
+    await Promise.allSettled(Array.from(this.inflight));
 
     this.segmentBuffers = [];
     this.segmentBytes = 0;
@@ -317,10 +323,13 @@ class TranscriptionStream extends EventEmitter {
     this.vadSilenceMs = 0;
     this.vadPreRoll = [];
     this.vadPreRollMs = 0;
-    this._flush().catch((error) => {
-      logger.error('Segment transcription failed', { stream: this.id, error: error.message });
-      this.emit('error', error);
-    });
+    const flush = this._flush()
+      .catch((error) => {
+        logger.error('Segment transcription failed', { stream: this.id, error: error.message });
+        this.emit('error', error);
+      })
+      .finally(() => this.inflight.delete(flush));
+    this.inflight.add(flush);
   }
 
   async _flush() {

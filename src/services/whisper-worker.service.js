@@ -112,12 +112,17 @@ class WhisperWorkerService {
       }
     });
 
+    // Both handlers ignore a child that has already been replaced: after a
+    // restart the old process exits late, and must not null out or fail the
+    // requests of its successor.
     child.on('error', (error) => {
+      if (this.process !== child) return;
       logger.error('Whisper worker process error', { error: error.message });
       this._rejectAll(error);
     });
 
     child.on('close', (code) => {
+      if (this.process !== child) return;
       const error = new Error(`Whisper worker exited with code ${code}`);
       if (!this.closing && code !== 0) {
         logger.error(error.message, {
@@ -177,6 +182,10 @@ class WhisperWorkerService {
         this.pending.delete(id);
         logger.error('Whisper worker request timed out', { action: payload.action, timeoutMs });
         reject(new Error(`Whisper worker timed out after ${timeoutMs}ms`));
+        // A wedged worker would stall every request after this one too. Kill
+        // it; the next request spawns a fresh one (and reloads the model).
+        logger.warn('Restarting the Whisper worker after a timeout');
+        this.close();
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
 
