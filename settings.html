@@ -368,6 +368,16 @@
         </div>
 
         <div class="field">
+          <label for="offlineMode">Speed</label>
+          <select id="offlineMode">
+            <option value="fast">Fast: batched decode (recommended)</option>
+            <option value="quality">Quality: sequential, each window sees the previous one</option>
+          </select>
+          <div class="hint">Fast decodes several speech chunks at once on all cores; a 1-hour
+            meeting takes a fraction of the time. Quality is the old, much slower path.</div>
+        </div>
+
+        <div class="field">
           <div class="row">
             <div style="flex:1">
               <label for="offlineBeamSize" class="hint">Beam size</label>

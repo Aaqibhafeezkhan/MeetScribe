@@ -38,6 +38,7 @@ const FIELDS = {
   archiveFormat: 'text',
   offlinePassEnabled: 'check',
   offlineModel: 'text',
+  offlineMode: 'text',
   offlineBeamSize: 'number',
   offlineCpuThreads: 'number',
   offlineWordConfidence: 'number',

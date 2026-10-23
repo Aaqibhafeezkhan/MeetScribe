@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Added
+- Final pass speed setting: **Fast** (default) decodes VAD-cut speech chunks in batches on one thread per physical core; **Quality** keeps the sequential, conditioned decode (#51).
+- Final passes are queued instead of dropped when one is already running, shown as "n queued", run at below-normal priority, and resume after a restart (#48, #49).
+- Logging of slow and failed transcriptions with queue wait, decode time and audio length, and of final-pass speed against meeting length (#53).
+
+### Changed
+- Final pass beam size defaults to 2 (was 5) and CPU threads to one per physical core (faster-whisper's own default is 4).
+- The live pass no longer uses the glossary; the final pass uses only the first ~96 tokens of terms (#47).
+
+### Fixed
+- Final pass failing with "The maximum decoding length must be > 0" when a glossary was set (#44).
+- Glossary terms written into transcripts where nobody said them (#47).
+- Last utterances lost when recording stops while segments are still queued (#50).
+- A wedged live Whisper worker is restarted after a timeout instead of stalling every following segment (#52).
+- Quitting during a final pass is logged as cancelled, not as an unreadable-audio crash (#49).
+
 ## [1.2.0] - 2026-10-21
 
 ### Added

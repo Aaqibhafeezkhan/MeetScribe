@@ -44,6 +44,7 @@ class SettingsStore {
       offlinePassEnabled: config.get('offline.passEnabled'),
       offlineModel: config.get('offline.model'),
       offlineDiffModel: config.get('offline.diffModel'),
+      offlineMode: config.get('offline.mode'),
       offlineBeamSize: config.get('offline.beamSize'),
       offlineComputeType: config.get('offline.computeType'),
       offlineCpuThreads: config.get('offline.cpuThreads'),
