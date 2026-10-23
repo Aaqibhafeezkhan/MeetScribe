@@ -32,6 +32,13 @@ const UNCERTAIN_INDEX_LIMIT = 40;
 // inside markup without locating anything. A genuine mishearing is a word or
 // two; beyond that the run is misalignment, not signal.
 const MAX_DIFF_RUN_WORDS = 4;
+// A segment made of at least this many glossary terms, which cover this share
+// of its words, is the model reading the hotword list back, not speech.
+const GLOSSARY_DUMP_MIN_TERMS = 3;
+const GLOSSARY_DUMP_SHARE = 0.6;
+// Same for the ">" context line: a segment that is mostly that sentence was
+// copied from the prompt.
+const PROMPT_COPY_SHARE = 0.8;
 
 const pad = (value) => String(value).padStart(2, '0');
 const clockOf = (ms) => {
@@ -431,8 +438,8 @@ class OfflinePassService extends EventEmitter {
       }
     }
 
-    // faster-whisper truncates an over-long hotword list at half the context
-    // window; keeping it short also keeps it from behaving like invented speech.
+    // whisper_offline.py trims the hotwords to a token budget (whole terms, in
+    // order); this cap only bounds what gets shipped to it.
     const capped = terms.slice(0, 120);
     return {
       terms: capped,
@@ -471,7 +478,12 @@ class OfflinePassService extends EventEmitter {
       }
     }
 
-    // 2. Drop mic lines that are just the meeting audio coming back in.
+    // 2. Drop lines the glossary put there, and mic lines that are just the
+    //    meeting audio coming back in.
+    const beforeGlossary = entries.length;
+    entries = this._dropGlossaryCopies(entries, glossary);
+    const glossaryCopies = beforeGlossary - entries.length;
+    if (glossaryCopies > 0) logger.info('Dropped segments copied from the glossary', { count: glossaryCopies });
     if (settings.echoSuppress) entries = this._suppressEcho(entries, settings);
 
     // 3. Weave in screenshots and markers, then order everything by when it happened.
@@ -498,7 +510,8 @@ class OfflinePassService extends EventEmitter {
     const appliedFixes = Array.from(fixCounts, ([heard, count]) => ({ heard, correct: matcher.byKey.get(heard), count }));
 
     const markdown = this._buildMarkdown({
-      meta, result, entries, settings, glossary, uncertain, threshold, appliedFixes, hasCorrections: Boolean(matcher)
+      meta, result, entries, settings, glossary, uncertain, threshold, appliedFixes, glossaryCopies,
+      hasCorrections: Boolean(matcher)
     });
     const markdownPath = path.join(folder, 'transcript.final.md');
     fs.writeFileSync(markdownPath, markdown, 'utf8');
@@ -537,6 +550,45 @@ class OfflinePassService extends EventEmitter {
     }, null, 2), 'utf8');
 
     return { markdownPath, jsonPath, lines: entries.length, uncertain: uncertain.length };
+  }
+
+  /**
+   * Hotwords bias the decoder, and over silence or mumble a biased decoder reads
+   * the list back: "AcmeTrakr, Zorblin, Quandor." A real sentence that uses a
+   * term or two keeps its other words and survives; only lines that are mostly
+   * glossary (or mostly the ">" context sentence) are dropped.
+   */
+  _dropGlossaryCopies(entries, glossary) {
+    const patterns = glossary.terms.map((term) => ({
+      regex: new RegExp(
+        '(?<![\\p{L}\\p{N}])' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}])',
+        'giu'
+      ),
+      words: term.split(/\s+/).length
+    }));
+    const promptTokens = this._tokenize(glossary.contextPrompt || '');
+
+    return entries.filter((entry) => {
+      const words = String(entry.text).split(/\s+/).filter(Boolean).length;
+      if (words === 0) return true;
+
+      let hits = 0;
+      let covered = 0;
+      for (const pattern of patterns) {
+        const found = (entry.text.match(pattern.regex) || []).length;
+        hits += found;
+        covered += found * pattern.words;
+      }
+      if (hits >= GLOSSARY_DUMP_MIN_TERMS && covered / words >= GLOSSARY_DUMP_SHARE) return false;
+
+      const tokens = this._tokenize(entry.text);
+      if (promptTokens.size >= MIN_ECHO_TOKENS && tokens.size >= MIN_ECHO_TOKENS) {
+        let shared = 0;
+        for (const token of tokens) if (promptTokens.has(token)) shared++;
+        if (shared / tokens.size >= PROMPT_COPY_SHARE) return false;
+      }
+      return true;
+    });
   }
 
   /**
@@ -712,7 +764,9 @@ class OfflinePassService extends EventEmitter {
     return pieces;
   }
 
-  _buildMarkdown({ meta, result, entries, settings, glossary, uncertain, threshold, appliedFixes, hasCorrections }) {
+  _buildMarkdown({
+    meta, result, entries, settings, glossary, uncertain, threshold, appliedFixes, glossaryCopies, hasCorrections
+  }) {
     const started = new Date(meta.startedAt);
     const stopped = new Date(meta.stoppedAt || meta.startedAt);
     const out = [];
@@ -726,8 +780,21 @@ class OfflinePassService extends EventEmitter {
     out.push('- **ASR:** ' + result.model + ' · beam ' + result.beamSize + ' · ' +
       (result.language || 'auto') + ' · ' + result.device + '/' + result.computeType);
     if (result.diffModel) out.push('- **Cross-checked against:** ' + result.diffModel);
-    if (glossary.terms.length > 0) out.push('- **Glossary:** ' + glossary.terms.join(', '));
+    if (glossary.terms.length > 0) {
+      const kept = Number.isInteger(result.glossaryKept) ? result.glossaryKept : glossary.terms.length;
+      out.push('- **Glossary:** ' + glossary.terms.slice(0, kept).join(', ') +
+        (kept < glossary.terms.length ? ' (first ' + kept + ' of ' + glossary.terms.length + ' terms used)' : ''));
+    }
     if (glossary.contextPrompt) out.push('- **Context given to the model:** ' + glossary.contextPrompt);
+    const dropped = Array.from(new Set(result.glossaryDropped || []));
+    if (dropped.length > 0) {
+      const labels = dropped.map((id) => (meta.streams.find((entry) => entry.stream === id) || {}).label || id);
+      out.push('- **Glossary was not applied** to ' + labels.join(', ') + ': decoding failed with it');
+    }
+    if (glossaryCopies > 0) {
+      out.push('- **Dropped:** ' + glossaryCopies + ' line' + (glossaryCopies === 1 ? '' : 's') +
+        ' that only repeated the glossary');
+    }
     out.push('- **Markup:** `~wort~` = the model was unsure (p < ' + threshold + ')' +
       (result.diffModel ? ' · `<a|b>` = the two models disagreed' : '') +
       (hasCorrections ? ' · `{wort}` = replaced from the corrections list' : ''));

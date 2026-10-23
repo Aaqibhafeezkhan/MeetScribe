@@ -94,11 +94,12 @@ class ConfigManager {
         model: 'small',
         language: 'auto',
         // Domain vocabulary — names, products, file names, jargon. Passed to
-        // faster-whisper as hotwords, which biases the decoder towards these
+        // the final pass as hotwords, which biases the decoder towards these
         // tokens. This is the only thing that reliably fixes proper nouns: a
         // bigger model helps with everything else, but it cannot guess a word
-        // it has never seen. Comma- or newline-separated; a line starting with
-        // "#" is prose context for the model instead of a term to boost.
+        // it has never seen. Comma- or newline-separated; "#" starts a note,
+        // ">" a line of prose context. Only the first ~96 tokens of terms are
+        // used: a longer list gets read out as speech.
         glossary: '',
         device: 'auto',
         computeType: 'auto',
