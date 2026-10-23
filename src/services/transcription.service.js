@@ -52,7 +52,9 @@ class TranscriptionService extends EventEmitter {
       computeType: settings.whisperComputeType,
       cpuThreads: settings.whisperCpuThreads,
       beamSize: settings.whisperBeamSize,
-      hotwords: this.getGlossaryHotwords(settings),
+      // No glossary here. The small live model, handed a long hotword list with
+      // every short utterance, reads the list out instead of the audio. Terms
+      // are the final pass's job, plus the corrections map.
       workerCount: settings.whisperWorkerCount,
       idleUnloadMs: settings.whisperIdleUnloadMs
     });
@@ -174,25 +176,6 @@ class TranscriptionService extends EventEmitter {
     audioArchive.write(streamId, buffer);
     const stream = this.streams.get(streamId);
     if (stream) stream.ingest(buffer);
-  }
-
-  /**
-   * The glossary as a hotwords string. Same list feeds the live pass and the
-   * final one, so a term the user adds is boosted everywhere.
-   */
-  getGlossaryHotwords(settings = settingsStore.all()) {
-    const raw = String(settings.glossary || '');
-    const terms = [];
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      // "#" notes and ">" prose context are not terms to boost.
-      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('>')) continue;
-      for (const term of trimmed.split(',')) {
-        const clean = term.trim();
-        if (clean) terms.push(clean);
-      }
-    }
-    return terms.slice(0, 120).join(', ');
   }
 
   getStatus() {

@@ -317,10 +317,11 @@
           <label for="glossary">Glossary — names, products, file names, jargon</label>
           <textarea id="glossary" rows="6" placeholder="Acme, AcmeTrakr, SharePoint, config.ini&#10;Stammdaten, Kassenzeichen&#10;&gt; Ein Meeting über die Acme-Migration."></textarea>
           <div class="hint">The one thing that reliably fixes proper nouns: these terms are fed to the
-            decoder as hotwords, in the live transcript and in the final pass. A bigger model helps with
-            everything else but cannot guess a word it has never seen. Commas or new lines; a line
-            starting with "#" is a note, one starting with "&gt;" is prose context for the model. Copied into each meeting folder as
-            glossary.txt, where you can edit it and re-run.</div>
+            final pass's decoder as hotwords. A bigger model helps with everything else but cannot guess
+            a word it has never seen. Keep it to this meeting's names, most important first: only the
+            first 20 or so terms are used, and a long list gets "heard" where nobody said it. Commas or
+            new lines; a line starting with "#" is a note, one starting with "&gt;" is prose context for
+            the model. Copied into each meeting folder as glossary.txt, where you can edit it and re-run.</div>
         </div>
 
         <div class="check">

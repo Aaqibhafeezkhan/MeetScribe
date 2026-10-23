@@ -42,6 +42,14 @@ import traceback
 # Report progress at most this often, so a fast stream cannot flood the pipe.
 PROGRESS_STEP = 0.02
 
+# Whisper's context is 448 tokens. faster-whisper gives the hotwords and the
+# previous text up to 223 tokens each, so a long glossary plus conditioning
+# fills it and leaves nothing to decode ("The maximum decoding length must be
+# > 0"). These budgets keep hotwords + previous text + SOT clear of 448, and a
+# short list is also far less likely to be read out as speech.
+HOTWORD_TOKEN_BUDGET = 96
+PROMPT_TOKEN_BUDGET = 64
+
 
 def emit(payload):
     print(json.dumps(payload), flush=True)
@@ -103,6 +111,45 @@ def load_model(job, name):
     log('Loaded {} on {}/{} in {:.1f}s'.format(name, device, compute_type, time.time() - started))
     emit({'event': 'loaded', 'model': name, 'device': device, 'compute_type': compute_type})
     return model, device, compute_type
+
+
+def count_tokens(model, text):
+    return len(model.hf_tokenizer.encode(' ' + text, add_special_tokens=False).ids)
+
+
+def budget_glossary(model, job):
+    """Trim hotwords to whole terms and the context prompt to whole words,
+    each within its token budget. Returns (kept, total) term counts."""
+    terms = [term.strip() for term in (job.get('hotwords') or '').split(',') if term.strip()]
+    kept = []
+    for term in terms:
+        if count_tokens(model, ', '.join(kept + [term])) > HOTWORD_TOKEN_BUDGET:
+            break
+        kept.append(term)
+    job['hotwords'] = ', '.join(kept)
+
+    words = (job.get('initial_prompt') or '').split()
+    while words and count_tokens(model, ' '.join(words)) > PROMPT_TOKEN_BUDGET:
+        words.pop()
+    job['initial_prompt'] = ' '.join(words)
+
+    if terms:
+        log('Glossary: kept {} of {} terms'.format(len(kept), len(terms)))
+    return len(kept), len(terms)
+
+
+def decode_stream(model, job, entry, pass_name, result):
+    """A glossary must never cost the whole pass: if decoding with it fails,
+    decode that stream again without it and say so in the result."""
+    try:
+        return transcribe_stream(model, job, entry, pass_name)
+    except Exception as exc:  # noqa: BLE001
+        if not (job.get('hotwords') or job.get('initial_prompt')):
+            raise
+        log('{} [{}]: decode failed with the glossary ({}); retrying without it'.format(
+            entry['stream'], pass_name, exc))
+        result['glossaryDropped'].append(entry['stream'])
+        return transcribe_stream(model, dict(job, hotwords='', initial_prompt=''), entry, pass_name)
 
 
 def transcribe_stream(model, job, entry, pass_name):
@@ -208,17 +255,21 @@ def main():
         'diffModel': job.get('diff_model') or None,
         'language': job.get('language'),
         'beamSize': job.get('beam_size'),
-        'hotwords': job.get('hotwords') or '',
         'streams': [],
         'diffStreams': [],
+        'glossaryDropped': [],
     }
 
     model, device, compute_type = load_model(job, job.get('model') or 'large-v3-turbo')
     result['device'] = device
     result['computeType'] = compute_type
+    # Every Whisper checkpoint shares the multilingual tokenizer, so one budget
+    # holds for the diff model too.
+    result['glossaryKept'], result['glossaryTotal'] = budget_glossary(model, job)
+    result['hotwords'] = job['hotwords']
 
     for entry in entries:
-        result['streams'].append(transcribe_stream(model, job, entry, 'primary'))
+        result['streams'].append(decode_stream(model, job, entry, 'primary', result))
 
     # Optional second opinion. Two independently-trained models agreeing is a
     # decent proxy for "correct"; where they disagree marks a span worth a human
@@ -230,7 +281,7 @@ def main():
         gc.collect()
         diff_model, _, _ = load_model(job, diff_model_name)
         for entry in entries:
-            result['diffStreams'].append(transcribe_stream(diff_model, job, entry, 'diff'))
+            result['diffStreams'].append(decode_stream(diff_model, job, entry, 'diff', result))
 
     out_path = job['output']
     with open(out_path, 'w', encoding='utf-8') as handle:
