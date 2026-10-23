@@ -16,7 +16,8 @@
     "postinstall": "electron-builder install-app-deps",
     "check": "node scripts/check.js",
     "build:installer": "electron-builder --win nsis --publish never",
-    "deploy": "node scripts/deploy-local.js"
+    "deploy": "node scripts/deploy-local.js",
+    "test": "node --test tests/unit/*.test.js"
   },
   "author": {
     "name": "AmineChr54",
