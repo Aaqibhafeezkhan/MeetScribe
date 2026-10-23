@@ -288,7 +288,6 @@ class MeetingService extends EventEmitter {
 
     const reorderMs = Number(settingsStore.get('reorderWindowMs')) || 0;
     const now = Date.now();
-    const cutoff = now - reorderMs;
 
     let oldestPending = null;
     if (!all && this.pendingProvider) {
