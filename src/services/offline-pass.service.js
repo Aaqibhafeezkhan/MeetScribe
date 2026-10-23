@@ -102,6 +102,23 @@ class OfflinePassService extends EventEmitter {
       corrections.loadRules(folder, settingsStore.userDataFile(corrections.FILE_NAME))
     );
 
+    // Streams are transcribed one after the other, so the work is their sum.
+    const audioMs = meta.streams.reduce((sum, entry) => sum + (Number(entry.durationMs) || 0), 0);
+    // The streams run in parallel during the meeting, so its length is the longest.
+    const meetingMs = meta.streams.reduce((max, entry) => Math.max(max, Number(entry.durationMs) || 0), 0);
+    const passStartedAt = Date.now();
+    const timing = () => {
+      const elapsedMs = Date.now() - passStartedAt;
+      return {
+        model: settings.offlineModel || 'large-v3-turbo',
+        audioMs,
+        meetingMs,
+        elapsedMs,
+        // Pass time over meeting length: 0.25 means a 1 h meeting took 15 min.
+        realtimeFactor: meetingMs ? Number((elapsedMs / meetingMs).toFixed(2)) : undefined
+      };
+    };
+
     try {
       this._progress('starting', 0, 'Loading the transcription model…');
       const result = await this._spawnPass({ folder, meta, paths, settings, glossary });
@@ -110,10 +127,10 @@ class OfflinePassService extends EventEmitter {
       const written = this._render({ folder, meta, result, events, settings, glossary, matcher });
       this._progress('done', 1, 'Final transcript ready');
       this.emit('done', { folder, ...written });
-      logger.info('Final pass complete', { folder, markdown: written.markdownPath });
+      logger.info('Final pass complete', { folder, markdown: written.markdownPath, ...timing() });
       return { ok: true, folder, ...written };
     } catch (error) {
-      logger.error('Final pass failed', { folder, error: error.message });
+      logger.error('Final pass failed', { folder, error: error.message, ...timing() });
       this.emit('failed', { folder, error: error.message });
       return { ok: false, folder, error: error.message };
     } finally {
@@ -198,6 +215,7 @@ class OfflinePassService extends EventEmitter {
         }
 
         if (message.event === 'loaded') {
+          logger.info('Final pass model loaded', { model: message.model, device: message.device });
           this._progress('transcribing', 0.02, 'Transcribing with ' + message.model + ' on ' + message.device + '…');
         } else if (message.event === 'progress') {
           passProgress.set(message.stream + ':' + message.pass, message.pct);
@@ -208,7 +226,7 @@ class OfflinePassService extends EventEmitter {
           this._progress('transcribing', pct, 'Transcribing… ' + Math.round(pct * 100) + '%');
         } else if (message.event === 'error') {
           failure = new Error(message.error || 'The final pass failed');
-          if (message.traceback) logger.debug('Final pass traceback', { traceback: message.traceback });
+          if (message.traceback) logger.error('Final pass traceback', { traceback: message.traceback.slice(-2000) });
         }
       });
 
