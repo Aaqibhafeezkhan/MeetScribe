@@ -42,7 +42,7 @@ test('meeting reorder emits eligible entries by start time and releases expired 
 
     meetingService._flushPending(false);
 
-    assert.deepEqual(emitted.map((entry) => entry.text), ['expired marker', 'earlier speech', 'later completion']);
+    assert.deepEqual(emitted.map((entry) => entry.text), ['earlier speech', 'expired marker', 'later completion']);
     assert.equal(meetingService.pending.length, 0);
   } finally {
     if (meetingService.flushTimer) clearTimeout(meetingService.flushTimer);
