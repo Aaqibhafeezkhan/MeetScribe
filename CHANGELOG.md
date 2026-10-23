@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-23
+
 ### Added
 - Settings → Final pass → **Models on this PC**: every Whisper model with its download status and size, Download and Delete buttons, and which one is in use. Dropdowns mark downloaded models with ✓ (#61).
 - German final-pass models: German turbo (`cstr/whisper-large-v3-turbo-german-int8_float32`) and German large-v3 (`tnfru/whisper-large-v3-german-ct2`) (#61).

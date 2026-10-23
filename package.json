@@ -1,6 +1,6 @@
 {
   "name": "meetscribe",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Meeting transcription overlay — live speaker-labeled transcript, invisible to screen sharing",
   "main": "main.js",
   "scripts": {
