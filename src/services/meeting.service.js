@@ -4,6 +4,7 @@ const EventEmitter = require('events');
 const settingsStore = require('../core/settings.store');
 const corrections = require('./corrections');
 const logger = require('../core/logger').createServiceLogger('MEETING');
+const { partitionPendingEntries } = require('./meeting-ordering');
 
 const pad = (value) => String(value).padStart(2, '0');
 
@@ -298,29 +299,13 @@ class MeetingService extends EventEmitter {
       }
     }
 
-    this.pending.sort((a, b) => a.startedAt - b.startedAt);
-
-    const ready = [];
-    const remaining = [];
-    for (const entry of this.pending) {
-      if (all) {
-        ready.push(entry);
-        continue;
-      }
-      const expired = now - (entry.queuedAt || now) >= MAX_HOLD_MS;
-      const settled = entry.startedAt <= cutoff;
-      const unblocked =
-        entry.kind === 'utterance' ||
-        oldestPending === null ||
-        entry.startedAt <= oldestPending;
-      // Once one entry is held, everything after it must wait too — otherwise
-      // the release order is not the sort order.
-      if (expired || (settled && unblocked && remaining.length === 0)) {
-        ready.push(entry);
-      } else {
-        remaining.push(entry);
-      }
-    }
+    const { ready, remaining } = partitionPendingEntries(this.pending, {
+      all,
+      now,
+      reorderMs,
+      oldestPending,
+      maxHoldMs: MAX_HOLD_MS
+    });
     this.pending = remaining;
 
     for (const entry of ready) this._emitEntry(entry);
