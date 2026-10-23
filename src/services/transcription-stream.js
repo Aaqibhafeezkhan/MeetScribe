@@ -336,7 +336,7 @@ class TranscriptionStream extends EventEmitter {
     this.pendingStarts.add(startedAt);
 
     try {
-      const result = await this.transcriber.transcribe(wavPath, { streamId: this.id });
+      const result = await this.transcriber.transcribe(wavPath, { streamId: this.id, audioMs: durationMs });
       const raw = result && result.text ? String(result.text) : '';
       const text = this._sanitize(raw);
 

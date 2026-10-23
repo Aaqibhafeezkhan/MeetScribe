@@ -99,10 +99,16 @@ class WhisperWorkerService {
     const lines = readline.createInterface({ input: child.stdout });
     lines.on('line', (line) => this._handleLine(line));
 
+    // Info, not debug: the worker only writes here for things that explain a
+    // slow or failed transcription (model load time, CUDA fallback to CPU).
+    // The tail also goes into the exit log, since a crash leaves only a code.
+    const stderrTail = [];
     child.stderr.on('data', (chunk) => {
       const message = chunk.toString().trim();
       if (message) {
-        logger.debug('Worker stderr', { message: message.substring(0, 1000) });
+        logger.info('Worker stderr', { message: message.substring(0, 1000) });
+        stderrTail.push(message);
+        while (stderrTail.length > 8) stderrTail.shift();
       }
     });
 
@@ -114,7 +120,10 @@ class WhisperWorkerService {
     child.on('close', (code) => {
       const error = new Error(`Whisper worker exited with code ${code}`);
       if (!this.closing && code !== 0) {
-        logger.error(error.message);
+        logger.error(error.message, {
+          pending: this.pending.size,
+          stderr: stderrTail.join(' | ').substring(0, 600)
+        });
       }
       this.process = null;
       this.readyInfo = null;
@@ -166,6 +175,7 @@ class WhisperWorkerService {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        logger.error('Whisper worker request timed out', { action: payload.action, timeoutMs });
         reject(new Error(`Whisper worker timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });

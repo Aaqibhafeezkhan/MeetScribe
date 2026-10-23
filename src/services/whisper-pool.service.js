@@ -7,6 +7,10 @@ const logger = require('../core/logger').createServiceLogger('WHISPER-POOL');
 // let latency grow without bound.
 const MAX_QUEUE_DEPTH = 6;
 
+// From queued to result. Past this a line lands noticeably late in the overlay,
+// so it is worth a warning that says where the time went.
+const SLOW_TRANSCRIPTION_MS = 8000;
+
 /**
  * Serializes transcription requests from both audio streams onto a small pool
  * of persistent Python workers.
@@ -181,6 +185,7 @@ class WhisperPool {
 
     const job = this.queue.shift();
     slot.busy = true;
+    const startedAt = Date.now();
 
     slot.worker
       .transcribe(job.wavPath, this._loadOptions())
@@ -188,16 +193,55 @@ class WhisperPool {
         this.lastLatencyMs = result && result.elapsed ? Math.round(result.elapsed * 1000) : null;
         this.lastDevice = (result && result.device) || this.lastDevice;
         this.lastError = null;
+        this._logTiming(job, startedAt, result);
         job.resolve(result);
       })
       .catch((error) => {
         this.lastError = error.message;
+        logger.error('Transcription request failed', {
+          ...this._timing(job, startedAt),
+          error: error.message,
+          traceback: error.workerTraceback ? error.workerTraceback.slice(-2000) : undefined
+        });
         job.reject(error);
       })
       .finally(() => {
         slot.busy = false;
         this._drain();
       });
+  }
+
+  /**
+   * Where the time went for one job. `decodeMs` is Whisper itself; whatever is
+   * left of `runMs` is model (re)load after an idle unload plus IPC. Never
+   * includes the text: the log is not a transcript.
+   */
+  _timing(job, startedAt, result) {
+    const now = Date.now();
+    const o = this.options || {};
+    return {
+      stream: job.meta.streamId,
+      audioMs: job.meta.audioMs,
+      queueWaitMs: startedAt - job.queuedAt,
+      runMs: now - startedAt,
+      totalMs: now - job.queuedAt,
+      decodeMs: result && result.elapsed ? Math.round(result.elapsed * 1000) : undefined,
+      queueDepth: this.queue.length,
+      model: o.model,
+      device: (result && result.device) || this.lastDevice || o.device
+    };
+  }
+
+  _logTiming(job, startedAt, result) {
+    const timing = this._timing(job, startedAt, result);
+    // Decoding slower than real time means this machine cannot keep up with
+    // the stream, whatever the queue looks like right now.
+    const behindRealtime = timing.audioMs && timing.decodeMs > timing.audioMs;
+    if (timing.totalMs >= SLOW_TRANSCRIPTION_MS || behindRealtime) {
+      logger.warn('Slow transcription', timing);
+    } else {
+      logger.debug('Transcribed segment', timing);
+    }
   }
 
   close() {
