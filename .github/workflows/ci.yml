@@ -27,6 +27,7 @@ jobs:
           python-version: '3.12'
       - run: npm ci
       - run: npm run check
+      - run: npm test
 
   secrets:
     name: secret-scan
