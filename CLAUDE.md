@@ -10,11 +10,12 @@ Read `docs/ARCHITECTURE.md` before touching the pipeline.
 npm install
 npm start               # launcher (unsets ELECTRON_RUN_AS_NODE); npm run dev adds --no-sandbox
 npm run check           # node --check all JS + parse all scripts/*.py. MUST pass before commit
+npm test                # unit tests (node:test, tests/*.test.js). MUST pass before commit
 npm run setup:whisper   # create venv + download model (or Settings > Transcription)
 npm run build:win       # electron-builder, output in dist/
 ```
 
-There is no test suite or linter yet (tracked issues). `npm run check` is the gate. For behavior changes, say how you verified by hand.
+Unit tests cover pure logic only (no Electron, no audio); use synthetic text. There is no linter yet. `npm run check` + `npm test` are the gate. For behavior changes, say how you verified by hand.
 
 ## Map
 

@@ -19,6 +19,7 @@ git clone https://github.com/<you>/MeetScribe.git
 cd MeetScribe
 npm install
 npm run check     # must pass
+npm test          # must pass
 npm start
 ```
 
@@ -29,7 +30,7 @@ Set up Whisper from Settings → Transcription (or `npm run setup:whisper`). Rea
 1. Fork, then branch from `main`: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`.
 2. Keep PRs focused, one concern each.
 3. Use [Conventional Commits](https://www.conventionalcommits.org/): `feat(offline): ...`, `fix(vad): ...`.
-4. Run `npm run check` before pushing.
+4. Run `npm run check` and `npm test` before pushing.
 5. Open a PR with the template. Link the issue (`Closes #123`). Describe how you tested it. Screenshots are welcome but **must not show real meeting content or names**.
 
 ## Style

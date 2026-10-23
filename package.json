@@ -108,7 +108,6 @@
       "artifactName": "MeetScribe-Setup-${version}.${ext}",
       "installerIcon": "assets/brand/icon.ico",
       "uninstallerIcon": "assets/brand/icon.ico",
-      "uninstallerIcon": "assets/brand/icon.ico",
       "installerHeaderIcon": "assets/brand/icon.ico",
       "shortcutName": "MeetScribe"
     },

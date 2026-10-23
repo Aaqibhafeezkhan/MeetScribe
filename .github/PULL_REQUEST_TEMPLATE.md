@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `npm run check` passes
+- [ ] `npm run check` and `npm test` pass
 - [ ] Focused change, matches surrounding style
 - [ ] Docs / CHANGELOG updated if user-visible
 - [ ] **No personal data**: no transcripts, audio, real-meeting screenshots, emails, local paths or secrets
