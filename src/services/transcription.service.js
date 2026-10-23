@@ -8,6 +8,7 @@ const whisperPool = require('./whisper-pool.service');
 const audioArchive = require('./audio-archive.service');
 const settingsStore = require('../core/settings.store');
 const logger = require('../core/logger').createServiceLogger('TRANSCRIPTION');
+const { isEchoMatch } = require('./transcription-logic');
 
 // How far back to look when deciding whether a "You" line is really the
 // meeting audio bleeding into the microphone.
@@ -202,17 +203,13 @@ class TranscriptionService extends EventEmitter {
     if (utterance.streamId !== 'mic') return false;
 
     const threshold = Number(settings.echoSimilarity) || 0.8;
-    const tokens = this._tokenize(utterance.text);
-    // Short lines ("yes", "okay, sure") overlap by chance; requiring a few
-    // words keeps genuine short replies from being swallowed.
-    if (tokens.size < MIN_ECHO_TOKENS) return false;
-
-    for (const entry of this.recentSystemLines) {
-      if (entry.tokens.size < MIN_ECHO_TOKENS) continue;
-      if (Math.abs(entry.startedAt - utterance.startedAt) > ECHO_WINDOW_MS) continue;
-      if (this._containment(tokens, entry.tokens) >= threshold) return true;
-    }
-    return false;
+    return isEchoMatch({
+      utterance,
+      recentSystemLines: this.recentSystemLines,
+      threshold,
+      windowMs: ECHO_WINDOW_MS,
+      minTokens: MIN_ECHO_TOKENS
+    });
   }
 
   _tokenize(text) {
