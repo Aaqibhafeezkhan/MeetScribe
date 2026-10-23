@@ -82,7 +82,13 @@ class ConfigManager {
         // A second, different model for cross-checking. Doubles the runtime and
         // marks every span where the two disagree. Empty = off.
         diffModel: '',
-        beamSize: 5,
+        // 'fast' decodes VAD-cut speech chunks in batches, several at once:
+        // several times quicker on CPU, and no cross-window conditioning to
+        // snowball a misheard term. 'quality' is the sequential decode that
+        // carries each window's text into the next.
+        mode: 'fast',
+        // 2, not 5: on turbo the beam mostly costs time, not accuracy.
+        beamSize: 2,
         computeType: 'auto',
         cpuThreads: 0,
         // Words the model scored below this are marked ~like this~ so whoever

@@ -14,6 +14,10 @@ const logger = require('../core/logger').createServiceLogger('FINAL-PASS');
 // reports progress every ~2% of every stream.
 const STALL_TIMEOUT_MS = 20 * 60 * 1000;
 
+// faster-whisper defaults to 4 threads whatever the CPU. CTranslate2 gains
+// nothing from SMT siblings, so use one thread per physical core instead.
+const DEFAULT_CPU_THREADS = Math.max(4, Math.floor(os.availableParallelism() / 2));
+
 // In userData: folders whose final pass was queued or running at quit.
 const PENDING_FILE = 'pending-final-passes.json';
 
@@ -282,9 +286,10 @@ class OfflinePassService extends EventEmitter {
       model_dir: paths.modelDir,
       device: settings.offlineDevice || settings.whisperDevice || 'auto',
       compute_type: settings.offlineComputeType || 'auto',
-      cpu_threads: Number(settings.offlineCpuThreads) || 0,
+      cpu_threads: Number(settings.offlineCpuThreads) || DEFAULT_CPU_THREADS,
       language: settings.whisperLanguage || 'auto',
-      beam_size: Number(settings.offlineBeamSize) || 5,
+      beam_size: Number(settings.offlineBeamSize) || 2,
+      mode: settings.offlineMode === 'quality' ? 'quality' : 'fast',
       hotwords: glossary.hotwords,
       initial_prompt: glossary.contextPrompt,
       word_timestamps: true
@@ -358,7 +363,9 @@ class OfflinePassService extends EventEmitter {
       child.stderr.on('data', (chunk) => {
         const text = chunk.toString().trim();
         if (!text) return;
-        logger.debug('Final pass stderr', { message: text.substring(0, 1000) });
+        // A handful of lines per pass (load time, terms kept, decode time per
+        // stream), and exactly what explains a slow or odd pass.
+        logger.info('Final pass stderr', { message: text.substring(0, 1000) });
         stderrTail.push(text);
         while (stderrTail.length > 8) stderrTail.shift();
       });
@@ -777,7 +784,7 @@ class OfflinePassService extends EventEmitter {
       .map((entry) => entry.label + ' (' + (entry.stream === 'mic' ? 'microphone' : 'system audio') + ')')
       .join(' · ');
     out.push('- **Speakers:** ' + speakers);
-    out.push('- **ASR:** ' + result.model + ' · beam ' + result.beamSize + ' · ' +
+    out.push('- **ASR:** ' + result.model + ' · ' + (result.mode || 'quality') + ' · beam ' + result.beamSize + ' · ' +
       (result.language || 'auto') + ' · ' + result.device + '/' + result.computeType);
     if (result.diffModel) out.push('- **Cross-checked against:** ' + result.diffModel);
     if (glossary.terms.length > 0) {

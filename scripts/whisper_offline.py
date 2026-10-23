@@ -50,6 +50,10 @@ PROGRESS_STEP = 0.02
 HOTWORD_TOKEN_BUDGET = 96
 PROMPT_TOKEN_BUDGET = 64
 
+# Speech chunks decoded together in fast mode. 8 keeps a 12-core CPU busy
+# without the memory of a large batch.
+BATCH_SIZE = 8
+
 
 def emit(payload):
     print(json.dumps(payload), flush=True)
@@ -159,15 +163,10 @@ def transcribe_stream(model, job, entry, pass_name):
     initial_prompt = (job.get('initial_prompt') or '').strip() or None
     want_words = bool(job.get('word_timestamps', True))
 
-    segments, info = model.transcribe(
-        entry['path'],
+    common = dict(
         language=None if language in ('auto', '', None) else language,
-        beam_size=int(job.get('beam_size') or 5),
-        # The whole point of the second pass: each window is decoded knowing
-        # what the previous one decided, which is what keeps a term stable
-        # across a 45-minute meeting instead of re-guessing it every utterance.
-        condition_on_previous_text=True,
-        # ...and the loop-breaker that makes the line above safe.
+        beam_size=int(job.get('beam_size') or 2),
+        # Loop-breaker: a window that decodes into repetition is retried hotter.
         temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         compression_ratio_threshold=2.4,
         log_prob_threshold=-1.0,
@@ -180,11 +179,31 @@ def transcribe_stream(model, job, entry, pass_name):
             'speech_pad_ms': 400,
         },
         word_timestamps=want_words,
-        # Needs word timestamps; drops text the model invents over silence.
-        hallucination_silence_threshold=2.0 if want_words else None,
         hotwords=hotwords,
         initial_prompt=initial_prompt,
     )
+
+    if job.get('mode') == 'quality':
+        segments, info = model.transcribe(
+            entry['path'],
+            # Each window is decoded knowing what the previous one decided, which
+            # keeps a term stable across a meeting instead of re-guessing it.
+            condition_on_previous_text=True,
+            # Needs word timestamps; drops text the model invents over silence.
+            hallucination_silence_threshold=2.0 if want_words else None,
+            **common
+        )
+    else:
+        # VAD cuts the stream into speech chunks of up to 30 s and several are
+        # decoded at once. Silence is never decoded and the cores stay busy,
+        # which is most of the speed-up. Chunks are independent, so a misheard
+        # term cannot snowball into the windows after it.
+        from faster_whisper import BatchedInferencePipeline
+        segments, info = BatchedInferencePipeline(model).transcribe(
+            entry['path'],
+            batch_size=int(job.get('batch_size') or BATCH_SIZE),
+            **common
+        )
 
     duration = getattr(info, 'duration', None) or max(1.0, entry.get('durationMs', 1000) / 1000.0)
     collected = []
@@ -255,6 +274,7 @@ def main():
         'diffModel': job.get('diff_model') or None,
         'language': job.get('language'),
         'beamSize': job.get('beam_size'),
+        'mode': job.get('mode') or 'fast',
         'streams': [],
         'diffStreams': [],
         'glossaryDropped': [],

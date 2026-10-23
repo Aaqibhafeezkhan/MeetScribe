@@ -20,7 +20,7 @@ Live speaker-labeled transcript while you talk, a higher-quality final pass when
 - **Two streams, labeled.** System audio (WASAPI loopback) is **Them**, your microphone is **You**.
 - **Live transcript** from [faster-whisper](https://github.com/SYSTRAN/faster-whisper), with VAD-based utterance splitting, Whisper-hallucination filtering and echo suppression between the two streams.
 - **Stealth overlay.** Click-through, always-on-top windows that stay out of screen sharing.
-- **Offline final pass.** After the meeting, re-transcribes the archived audio in one continuous decode with a larger model (`large-v3-turbo`), marks low-confidence words, and adds paragraphs, 5-minute chapter headings and an index of uncertain spans.
+- **Offline final pass.** After the meeting, re-transcribes the archived audio with a larger model (`large-v3-turbo`), batched across all CPU cores by default, marks low-confidence words, and adds paragraphs, 5-minute chapter headings and an index of uncertain spans.
 - **Audio archive.** Raw per-stream audio is kept (FLAC by default) so any meeting can be re-transcribed later with better settings.
 - **Durable by design.** One folder per meeting, fsync'd append-only transcript, so a crash loses seconds, not the meeting.
 - **100% local.** Nothing leaves your machine after the one-time model download.
