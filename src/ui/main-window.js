@@ -139,7 +139,8 @@ class MainWindowUI {
       this.finalText.textContent = 'Final pass failed';
     } else {
       const pct = Math.round((payload.pct || 0) * 100);
-      this.finalText.textContent = `Final pass ${pct}%`;
+      const waiting = payload.waiting ? ` · ${payload.waiting} queued` : '';
+      this.finalText.textContent = `Final pass ${pct}%${waiting}`;
     }
     this.resizeToContent();
 

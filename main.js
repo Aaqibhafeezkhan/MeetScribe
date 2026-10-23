@@ -167,6 +167,8 @@ class ApplicationController {
 
       logger.info("Application initialized successfully");
       this.checkForUpdates();
+      // After the UI is up: a resumed pass is background work and can wait.
+      setTimeout(() => this.resumePendingFinalPasses(), 5000);
     } catch (error) {
       this.starting = false;
       logger.error("Application initialization failed", { error: error.message });
@@ -316,6 +318,15 @@ class ApplicationController {
       windowManager.broadcastToAllWindows("final-pass", { ...payload, running: true });
     });
 
+    offlinePass.on("queued", (payload) => {
+      windowManager.broadcastToAllWindows("final-pass", {
+        state: "queued",
+        running: true,
+        message: `Final pass queued (${payload.waiting} waiting)`,
+        ...payload,
+      });
+    });
+
     offlinePass.on("done", (payload) => {
       windowManager.broadcastToAllWindows("final-pass", {
         state: "done",
@@ -419,12 +430,10 @@ class ApplicationController {
    * can show it, then compresses the archive once the transcript exists.
    */
   async runFinalPass({ folder, meta, events = [] }) {
-    if (offlinePass.isRunning()) {
-      return { ok: false, error: "A final pass is already running" };
-    }
-
+    // Queued, never refused: a meeting that ends while another pass runs waits
+    // its turn instead of silently never getting a final transcript.
     const paths = transcriptionService.getPaths();
-    const result = await offlinePass.run({ folder, meta, events, paths });
+    const result = await offlinePass.enqueue({ folder, meta, events, paths });
 
     if (result.ok) {
       await this.compressArchive(meta, paths);
@@ -540,6 +549,22 @@ class ApplicationController {
     } catch (error) {
       logger.error("Re-run of the final pass failed", { error: error.message });
       return { ok: false, error: error.message };
+    }
+  }
+
+  /** Re-queue the passes that were queued or running when the app last quit. */
+  resumePendingFinalPasses() {
+    // Left on disk otherwise, so they resume once Whisper is set up again.
+    if (!settingsStore.get("offlinePassEnabled") || !transcriptionService.isAvailable()) return;
+    const folders = offlinePass.takePending();
+    if (folders.length === 0) return;
+    logger.info("Resuming pending final passes", { count: folders.length });
+    for (const folder of folders) {
+      this.rerunFinalPass(folder).then((result) => {
+        if (!result.ok && !result.cancelled) {
+          logger.warn("Skipped a pending final pass", { folder, error: result.error });
+        }
+      });
     }
   }
 
@@ -978,7 +1003,7 @@ class ApplicationController {
     // Patch the WAV headers before the process goes away, so a quit mid-meeting
     // still leaves a playable archive rather than a truncated one.
     audioArchive.stopSync();
-    offlinePass.cancel();
+    offlinePass.shutdown();
     meetingService.shutdown();
     transcriptionService.shutdown();
     windowManager.destroyAllWindows();
@@ -988,7 +1013,7 @@ class ApplicationController {
   quit() {
     try {
       audioArchive.stopSync();
-      offlinePass.cancel();
+      offlinePass.shutdown();
       meetingService.shutdown();
       transcriptionService.shutdown();
       windowManager.destroyAllWindows();

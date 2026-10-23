@@ -14,6 +14,9 @@ const logger = require('../core/logger').createServiceLogger('FINAL-PASS');
 // reports progress every ~2% of every stream.
 const STALL_TIMEOUT_MS = 20 * 60 * 1000;
 
+// In userData: folders whose final pass was queued or running at quit.
+const PENDING_FILE = 'pending-final-passes.json';
+
 // Consecutive segments from one speaker closer than this become one paragraph.
 const BLOCK_GAP_MS = 8000;
 // A new "## HH:MM" heading is emitted once the clock has moved on this far.
@@ -59,6 +62,14 @@ class OfflinePassService extends EventEmitter {
     this.running = false;
     this.child = null;
     this.currentFolder = null;
+    this.lastPct = 0;
+    // Passes waiting their turn. One at a time: two large models decoding at
+    // once halve each other's speed and can exhaust RAM.
+    this.queue = [];
+    this.currentJob = null;
+    this.draining = false;
+    this.cancelled = false;
+    this.shuttingDown = false;
   }
 
   isRunning() {
@@ -66,12 +77,100 @@ class OfflinePassService extends EventEmitter {
   }
 
   getStatus() {
-    return { running: this.running, folder: this.currentFolder };
+    return { running: this.running, folder: this.currentFolder, queued: this.queue.map((job) => job.folder) };
   }
 
   cancel() {
     if (this.child) {
+      this.cancelled = true;
       try { this.child.kill(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  /**
+   * App quit: stop the running pass but keep the persisted queue, so the next
+   * launch resumes it instead of the meeting silently never getting a final
+   * transcript.
+   */
+  shutdown() {
+    this.shuttingDown = true;
+    this.cancel();
+  }
+
+  /**
+   * Queue a pass; resolves with that pass's result. A folder that is already
+   * waiting or running is joined, not queued twice.
+   */
+  enqueue(job) {
+    const existing = [this.currentJob, ...this.queue].find((entry) => entry && entry.folder === job.folder);
+    if (existing) return existing.promise;
+
+    let resolve;
+    const promise = new Promise((done) => { resolve = done; });
+    this.queue.push({ ...job, promise, resolve });
+    this._persist();
+    if (this.currentJob) {
+      logger.info('Final pass queued', { folder: job.folder, waiting: this.queue.length });
+      this.emit('queued', { folder: job.folder, waiting: this.queue.length, pct: this.lastPct });
+    }
+    this._drain();
+    return promise;
+  }
+
+  async _drain() {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.queue.length > 0 && !this.shuttingDown) {
+        const job = this.queue.shift();
+        this.currentJob = job;
+        let result;
+        try {
+          result = await this.run(job);
+        } catch (error) {
+          // run() throws only on preconditions (no audio, no Python), before
+          // anything started. Report it like any other failure.
+          logger.error('Final pass could not start', { folder: job.folder, error: error.message });
+          this.emit('failed', { folder: job.folder, error: error.message });
+          result = { ok: false, folder: job.folder, error: error.message };
+        }
+        this.currentJob = null;
+        if (!this.shuttingDown) this._persist();
+        job.resolve(result);
+      }
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  /**
+   * Folders whose pass was queued or running when the app last quit. Taking
+   * them clears the file; re-queueing them writes back the ones still valid.
+   */
+  takePending() {
+    try {
+      const file = settingsStore.userDataFile(PENDING_FILE);
+      if (!fs.existsSync(file)) return [];
+      const folders = JSON.parse(fs.readFileSync(file, 'utf8'));
+      fs.rmSync(file, { force: true });
+      return Array.isArray(folders) ? folders.filter((folder) => typeof folder === 'string') : [];
+    } catch (error) {
+      logger.warn('Could not read pending final passes', { error: error.message });
+      return [];
+    }
+  }
+
+  _persist() {
+    const folders = [this.currentJob, ...this.queue].filter(Boolean).map((job) => job.folder);
+    try {
+      const file = settingsStore.userDataFile(PENDING_FILE);
+      if (folders.length === 0) {
+        fs.rmSync(file, { force: true });
+      } else {
+        fs.writeFileSync(file, JSON.stringify(folders, null, 2), 'utf8');
+      }
+    } catch (error) {
+      logger.warn('Could not persist pending final passes', { error: error.message });
     }
   }
 
@@ -95,6 +194,8 @@ class OfflinePassService extends EventEmitter {
     }
 
     this.running = true;
+    this.cancelled = false;
+    this.lastPct = 0;
     this.currentFolder = folder;
     const settings = settingsStore.all();
     const glossary = this._loadGlossary(folder, settings);
@@ -130,6 +231,11 @@ class OfflinePassService extends EventEmitter {
       logger.info('Final pass complete', { folder, markdown: written.markdownPath, ...timing() });
       return { ok: true, folder, ...written };
     } catch (error) {
+      if (this.cancelled) {
+        logger.info('Final pass cancelled', { folder, ...timing() });
+        this.emit('cancelled', { folder });
+        return { ok: false, cancelled: true, folder, error: 'cancelled' };
+      }
       logger.error('Final pass failed', { folder, error: error.message, ...timing() });
       this.emit('failed', { folder, error: error.message });
       return { ok: false, folder, error: error.message };
@@ -190,6 +296,13 @@ class OfflinePassService extends EventEmitter {
         env: paths.env
       });
       this.child = child;
+      // It runs straight away, even during the next recording; below-normal
+      // priority keeps the live worker (normal priority) responsive meanwhile.
+      try {
+        os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+      } catch (error) {
+        logger.debug('Could not lower final pass priority', { error: error.message });
+      }
 
       let settled = false;
       let failure = null;
@@ -256,6 +369,8 @@ class OfflinePassService extends EventEmitter {
         if (stall) clearTimeout(stall);
 
         if (failure) return reject(failure);
+        // Killed on purpose (quit, cancel): not a crash, and not the audio's fault.
+        if (this.cancelled) return reject(new Error('Final pass cancelled'));
         if (code !== 0) {
           const detail = stderrTail.join(' | ').substring(0, 600);
           // 0xC0000005 on Windows, SIGSEGV elsewhere: the interpreter died
@@ -712,7 +827,8 @@ class OfflinePassService extends EventEmitter {
   }
 
   _progress(state, pct, message) {
-    this.emit('progress', { state, pct, message });
+    this.lastPct = pct;
+    this.emit('progress', { state, pct, message, waiting: this.queue.length });
   }
 }
 
