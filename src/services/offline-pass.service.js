@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const settingsStore = require('../core/settings.store');
 const audioArchive = require('./audio-archive.service');
 const corrections = require('./corrections');
+const speedStats = require('./speed-stats.service');
 const logger = require('../core/logger').createServiceLogger('FINAL-PASS');
 
 // Nothing on stdout for this long means the child is wedged, not slow: it
@@ -240,6 +241,15 @@ class OfflinePassService extends EventEmitter {
       this._progress('done', 1, 'Final transcript ready');
       this.emit('done', { folder, ...written });
       logger.info('Final pass complete', { folder, markdown: written.markdownPath, ...timing() });
+      // Feeds the "≈ N min per 1 h meeting" estimate in Settings.
+      speedStats.record({
+        model: settings.offlineModel || 'large-v3-turbo',
+        mode: result.mode,
+        threads: result.cpuThreads,
+        streams: result.streams,
+        meetingSec: meetingMs / 1000,
+        loadSec: result.loadSec
+      });
       return { ok: true, folder, ...written };
     } catch (error) {
       if (this.cancelled) {
@@ -907,3 +917,4 @@ class OfflinePassService extends EventEmitter {
 }
 
 module.exports = new OfflinePassService();
+module.exports.DEFAULT_CPU_THREADS = DEFAULT_CPU_THREADS;

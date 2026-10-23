@@ -83,6 +83,17 @@
 
     .hint { color: var(--muted); font-size: 10px; line-height: 1.5; margin-top: 4px; }
 
+    .models { display: flex; flex-direction: column; gap: 4px; }
+    .model { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+      border: 1px solid var(--border); border-radius: 6px; background: var(--field); }
+    .model-main { flex: 1; min-width: 0; }
+    .model-name { font-size: 11px; color: var(--text); }
+    .model-meta { font-size: 10px; color: var(--muted); line-height: 1.4; }
+    .model-state { font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .model-state.ok { color: #6ee7a8; }
+    .model-tag { font-size: 9px; color: var(--accent); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+
     .meters { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
     .meter { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--muted); }
     .meter span { width: 34px; }
@@ -354,17 +365,27 @@
           <label for="offlineModel">Model for the final pass</label>
           <select id="offlineModel">
             <option value="large-v3-turbo">large-v3-turbo (recommended)</option>
+            <option value="cstr/whisper-large-v3-turbo-german-int8_float32">German turbo (German fine-tune of large-v3-turbo)</option>
             <option value="large-v3">large-v3 (slowest, best)</option>
+            <option value="tnfru/whisper-large-v3-german-ct2">German large-v3 (German fine-tune, slow)</option>
             <option value="medium">medium</option>
             <option value="small">small (same as live — no accuracy gain)</option>
           </select>
-          <div class="hint">A German fine-tune such as primeline/whisper-large-v3-turbo-german can be
-            typed into the box below instead; it downloads on first use.</div>
+          <div class="hint">✓ = downloaded. Anything else on Hugging Face in CTranslate2 format
+            (a repo with a model.bin) can be typed into the box below; plain Transformers repos
+            cannot be loaded.</div>
         </div>
 
         <div class="field">
           <label for="offlineModelCustom">Custom model (overrides the choice above)</label>
-          <input type="text" id="offlineModelCustom" placeholder="cstr/whisper-large-v3-turbo-german-int8_float32" />
+          <input type="text" id="offlineModelCustom" placeholder="org/some-whisper-model-ct2" />
+        </div>
+
+        <div class="field">
+          <label>Models on this PC</label>
+          <div class="models" id="modelList"><div class="hint">Loading…</div></div>
+          <div class="hint">Time per 1-hour meeting starts from a benchmark and adjusts to this PC
+            and your meetings after every final pass. Live-only models show no estimate.</div>
         </div>
 
         <div class="field">

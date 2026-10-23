@@ -44,6 +44,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Whisper setup ──
   getWhisperStatus: () => ipcRenderer.invoke('whisper:status'),
   installWhisper: (options) => ipcRenderer.invoke('whisper:install', options),
+  listModels: () => ipcRenderer.invoke('models:list'),
+  downloadModel: (id) => ipcRenderer.invoke('models:download', id),
+  deleteModel: (id) => ipcRenderer.invoke('models:delete', id),
+  onModelProgress: (cb) => on('model-progress', cb),
 
   // ── Windows ──
   resizeWindow: (width, height) => ipcRenderer.invoke('resize-window', { width, height }),

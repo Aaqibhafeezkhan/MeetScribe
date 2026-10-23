@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Added
+- Settings → Final pass → **Models on this PC**: every Whisper model with its download status and size, Download and Delete buttons, and which one is in use. Dropdowns mark downloaded models with ✓ (#61).
+- German final-pass models: German turbo (`cstr/whisper-large-v3-turbo-german-int8_float32`) and German large-v3 (`tnfru/whisper-large-v3-german-ct2`) (#61).
+- Estimated final-pass time per 1-hour meeting for each model. It starts from a benchmark and learns from every pass: model speed per second of speech, plus how much speech your meetings contain (#61).
+
+### Fixed
+- The custom-model hint suggested a Transformers repo that faster-whisper cannot load (#61).
+
 ## [1.3.0] - 2026-10-23
 
 ### Added
