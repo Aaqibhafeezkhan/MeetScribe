@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Added
+
+- Unit tests for the hallucination filter, transcript reordering and echo suppression (`npm test`, run in CI).
+
 ## [1.4.0] - 2026-10-23
 
 ### Added
